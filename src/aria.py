@@ -1,5 +1,21 @@
 import argparse
+import os
+import google.generativeai as genai
 from navigator import AriaNavigator
+
+def summarize_text(text: str) -> str:
+    """Summarizes the given text using the Gemini API."""
+    try:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            return "Error: GEMINI_API_KEY environment variable not set."
+        
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        response = model.generate_content(f"Summarize the following text:\n\n{text}")
+        return response.text
+    except Exception as e:
+        return f"Error during summarization: {e}"
 
 def main():
     parser = argparse.ArgumentParser(description="Aria CLI - Your web automation assistant.")
@@ -20,9 +36,9 @@ def main():
     parser_page_new = page_subparsers.add_parser('new', help='Navigate to a new URL.')
     parser_page_new.add_argument('url', type=str, help='The URL to navigate to.')
     page_subparsers.add_parser('list', help='List all open pages.')
-
     parser_page_goto = page_subparsers.add_parser('goto', help='Go to a specific page.')
     parser_page_goto.add_argument('identifier', type=str, help='The 1-based index or title of the page to go to.')
+    page_subparsers.add_parser('summarize', help='Summarize the current page.')
 
 
     args = parser.parse_args()
@@ -57,6 +73,13 @@ def main():
                 print(f"Switched to page '{identifier}'.")
             else:
                 print(f"Could not go to page '{identifier}'.")
+        elif args.page_command == 'summarize':
+            content = navigator.get_page_content()
+            if content:
+                summary = summarize_text(content)
+                print(summary)
+            else:
+                print("Could not retrieve content from the page.")
     else:
         parser.print_help()
 

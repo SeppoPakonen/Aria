@@ -2,6 +2,7 @@ import os
 import json
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.common.by import By
 
 # Webdriver managers
 from webdriver_manager.chrome import ChromeDriverManager
@@ -220,3 +221,17 @@ class AriaNavigator:
             return False
         
         return False
+
+    def get_page_content(self):
+        if not self.driver:
+            self.driver = self.connect_to_session()
+        
+        if not self.driver:
+            print("No active session. Use 'aria open' to start a session.")
+            return ""
+
+        try:
+            return self.driver.find_element(By.TAG_NAME, 'body').text
+        except WebDriverException as e:
+            print(f"Error getting page content: {e}")
+            return ""
