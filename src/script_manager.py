@@ -30,3 +30,14 @@ class ScriptManager:
         except OSError as e:
             print(f"Error listing scripts: {e}")
             return []
+
+    def get_script_path(self, name: str) -> str | None:
+        """Returns the full path of a script if it exists."""
+        # Ensure we have the .py extension
+        if not name.endswith(".py"):
+            name += ".py"
+        
+        script_path = os.path.join(self.scripts_dir, name)
+        if os.path.exists(script_path):
+            return script_path
+        return None

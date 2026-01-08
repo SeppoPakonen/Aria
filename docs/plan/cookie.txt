@@ -5,9 +5,9 @@ This file tracks the completed and upcoming tasks in the project plan. It should
 ### Last Completed Task
 - **Track**: 01-implement-underlying-framework-and-mvp
 - **Phase**: 05-script-management-fundamentals
-- **Task**: 02-implement-script-list-command
+- **Task**: 03-implement-script-edit-command
 
 ### Next Task to Implement
 - **Track**: 01-implement-underlying-framework-and-mvp
 - **Phase**: 05-script-management-fundamentals
-- **Task**: 03-implement-script-edit-command
+- **Task**: 04-implement-script-remove-command

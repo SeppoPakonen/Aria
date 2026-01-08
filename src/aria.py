@@ -48,6 +48,8 @@ def main():
     parser_script_new = script_subparsers.add_parser('new', help='Create a new script.')
     parser_script_new.add_argument('name', type=str, help='The name of the script to create.')
     script_subparsers.add_parser('list', help='List all available scripts.')
+    parser_script_edit = script_subparsers.add_parser('edit', help='Edit an existing script.')
+    parser_script_edit.add_argument('name', type=str, help='The name of the script to edit.')
 
 
     args = parser.parse_args()
@@ -106,6 +108,22 @@ def main():
                     print(f"- {script}")
             else:
                 print("No scripts found.")
+        elif args.script_command == 'edit':
+            script_path = script_manager.get_script_path(args.name)
+            if script_path:
+                print(f"Opening script for editing: {script_path}")
+                try:
+                    os.startfile(script_path)
+                except AttributeError:
+                    # For non-Windows platforms (future)
+                    import subprocess
+                    import sys
+                    if sys.platform == "darwin":
+                        subprocess.run(["open", script_path])
+                    else:
+                        subprocess.run(["xdg-open", script_path])
+            else:
+                print(f"Error: Script '{args.name}' not found.")
     else:
         parser.print_help()
 
