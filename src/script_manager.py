@@ -53,3 +53,25 @@ class ScriptManager:
                 print(f"Error deleting script: {e}")
                 return False
         return False
+
+    def run_script(self, name: str) -> bool:
+        """Executes a script file."""
+        import subprocess
+        import sys
+        
+        script_path = self.get_script_path(name)
+        if script_path:
+            try:
+                print(f"Running script: {script_path}")
+                # Use sys.executable to ensure we use the same Python interpreter
+                subprocess.run([sys.executable, script_path], check=True)
+                return True
+            except subprocess.CalledProcessError as e:
+                print(f"Error: Script exited with error code {e.returncode}")
+                return False
+            except Exception as e:
+                print(f"Error running script: {e}")
+                return False
+        else:
+            print(f"Error: Script '{name}' not found.")
+            return False

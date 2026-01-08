@@ -53,6 +53,8 @@ def main():
     parser_script_remove = script_subparsers.add_parser('remove', help='Remove a script.')
     parser_script_remove.add_argument('name', type=str, help='The name of the script to remove.')
     parser_script_remove.add_argument('--force', action='store_true', help='Remove without confirmation.')
+    parser_script_run = script_subparsers.add_parser('run', help='Run a script.')
+    parser_script_run.add_argument('name', type=str, help='The name of the script to run.')
 
 
     args = parser.parse_args()
@@ -138,6 +140,8 @@ def main():
                 print(f"Script '{args.name}' removed successfully.")
             else:
                 print(f"Error: Script '{args.name}' not found or could not be removed.")
+        elif args.script_command == 'run':
+            script_manager.run_script(args.name)
     else:
         parser.print_help()
 
