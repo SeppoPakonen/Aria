@@ -141,23 +141,94 @@ class AriaNavigator:
         except Exception as e:
             print(f"An unexpected error occurred during navigation: {e}")
 
-    def close_session(self):
-        session_file = self.get_session_file_path()
-        if not os.path.exists(session_file):
-            print("No active Aria session found.")
-            return
-        
-        driver = self.connect_to_session()
+        def close_session(self):
 
-        if driver:
+            session_file = self.get_session_file_path()
+
+            if not os.path.exists(session_file):
+
+                print("No active Aria session found.")
+
+                return
+
+            
+
+            driver = self.connect_to_session()
+
+    
+
+            if driver:
+
+                try:
+
+                    driver.quit()
+
+                except WebDriverException as e:
+
+                    print(f"Error while closing the browser session: {e}")
+
+                except Exception as e:
+
+                    print(f"An unexpected error occurred while closing the session: {e}")
+
+    
+
+            if os.path.exists(session_file):
+
+                os.remove(session_file)
+
+            
+
+            print("Aria session closed.")
+
+    
+
+        def list_tabs(self):
+
+            if not self.driver:
+
+                self.driver = self.connect_to_session()
+
+            
+
+            if not self.driver:
+
+                return []
+
+    
+
+            tabs = []
+
+            original_window = self.driver.current_window_handle
+
+    
+
             try:
-                driver.quit()
-            except WebDriverException as e:
-                print(f"Error while closing the browser session: {e}")
-            except Exception as e:
-                print(f"An unexpected error occurred while closing the session: {e}")
 
-        if os.path.exists(session_file):
-            os.remove(session_file)
-        
-        print("Aria session closed.")
+                for handle in self.driver.window_handles:
+
+                    self.driver.switch_to.window(handle)
+
+                    tabs.append({
+
+                        "title": self.driver.title,
+
+                        "url": self.driver.current_url
+
+                    })
+
+                # Switch back to the original window
+
+                self.driver.switch_to.window(original_window)
+
+            except WebDriverException as e:
+
+                print(f"Error listing tabs: {e}")
+
+                return []
+
+            
+
+            return tabs
+
+    
