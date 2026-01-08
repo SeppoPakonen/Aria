@@ -4,10 +4,10 @@ This file tracks the completed and upcoming tasks in the project plan. It should
 
 ### Last Completed Task
 - **Track**: 01-implement-underlying-framework-and-mvp
-- **Phase**: 07-logging-basic-diagnostics
-- **Task**: 03-implement-diagnostics-command
+- **Phase**: 08-runbook-alignment-validation
+- **Task**: 05-final-mvp-validation
 
 ### Next Task to Implement
-- **Track**: 01-implement-underlying-framework-and-mvp
-- **Phase**: 08-runbook-alignment-validation
-- **Task**: 01-validate-page-commands
+- **Track**: 02-implement-intermediate-level-features
+- **Phase**: 01-multi-page-interaction-refinement
+- **Task**: 01-implement-cross-tab-content-synthesis

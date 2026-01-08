@@ -24,105 +24,145 @@ from logger import get_logger
 
 logger = get_logger("navigator")
 
-SESSION_FILE = "aria_session.json"
+class ReusableRemote(webdriver.Remote):
+    def __init__(self, command_executor, options, session_id):
+        self._session_id = session_id
+        super().__init__(command_executor=command_executor, options=options)
+        self.session_id = session_id
+
+    def start_session(self, capabilities, browser_profile=None):
+        # Override to prevent starting a new session
+        if hasattr(self, "_session_id") and self._session_id:
+            self.session_id = self._session_id
+        else:
+            super().start_session(capabilities, browser_profile)
 
 class AriaNavigator:
     def __init__(self):
         self.driver: WebDriver | None = None
 
-    def get_session_file_path(self):
-        # Using a folder in the user's home directory to store session state
+    def get_session_file_path(self, browser_name=None):
         temp_dir = os.path.join(os.path.expanduser("~"), ".aria")
         if not os.path.exists(temp_dir):
             os.makedirs(temp_dir)
-        return os.path.join(temp_dir, SESSION_FILE)
+        if browser_name:
+            return os.path.join(temp_dir, f"aria_session_{browser_name}.json")
+        return os.path.join(temp_dir, "aria_session_current.json")
+
+    def _save_session(self, browser_name, session_data):
+        # Save browser-specific session
+        with open(self.get_session_file_path(browser_name), "w") as f:
+            json.dump(session_data, f)
+        # Set as current session
+        with open(self.get_session_file_path(), "w") as f:
+            json.dump({"browser": browser_name}, f)
+
+    def _get_current_browser(self):
+        current_file = self.get_session_file_path()
+        if os.path.exists(current_file):
+            try:
+                with open(current_file, "r") as f:
+                    return json.load(f).get("browser")
+            except:
+                pass
+        return None
+
+    def _load_session_data(self, browser_name):
+        session_file = self.get_session_file_path(browser_name)
+        if os.path.exists(session_file):
+            with open(session_file, "r") as f:
+                return json.load(f)
+        return None
 
     def start_session(self, browser_name="chrome", headless=False, force=False):
         logger.info(f"Starting browser session: {browser_name} (headless={headless}, force={force})")
-        session_file = self.get_session_file_path()
+        session_file = self.get_session_file_path(browser_name)
+        
         if os.path.exists(session_file):
-            if self.connect_to_session():
+            if self.connect_to_session(browser_name):
                 if force:
-                    print("Closing active session to start a new one...")
-                    logger.info("Closing active session due to force=True")
-                    self.close_session()
+                    print(f"Closing active {browser_name} session to start a new one...")
+                    self.close_session(browser_name)
                 else:
-                    print("An Aria session is already active.")
-                    logger.warning("Attempted to start session while one is already active.")
-                    return None
+                    print(f"An Aria session for {browser_name} is already active.")
+                    # Still set it as current
+                    self._save_session(browser_name, self._load_session_data(browser_name))
+                    return self.driver
             else:
-                logger.info("Cleaning up stale session file.")
                 os.remove(session_file)
 
         try:
+            import subprocess
+            import time
+            import socket
+
+            def find_free_port():
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(('', 0))
+                    return s.getsockname()[1]
+
+            port = find_free_port()
+            
+            driver_path = None
+            options = None
             if browser_name == "chrome":
+                driver_path = ChromeDriverManager().install()
                 options = ChromeOptions()
-                if headless:
-                    options.add_argument("--headless")
-                self.driver = webdriver.Chrome(
-                    service=ChromeService(ChromeDriverManager().install()),
-                    options=options
-                )
             elif browser_name == "firefox":
+                driver_path = GeckoDriverManager().install()
                 options = FirefoxOptions()
-                if headless:
-                    options.add_argument("--headless")
-                self.driver = webdriver.Firefox(
-                    service=FirefoxService(GeckoDriverManager().install()),
-                    options=options
-                )
             elif browser_name == "edge":
+                driver_path = EdgeChromiumDriverManager().install()
                 options = EdgeOptions()
-                if headless:
-                    options.add_argument("--headless")
-                self.driver = webdriver.Edge(
-                    service=EdgeService(EdgeChromiumDriverManager().install()),
-                    options=options
-                )
             else:
                 print(f"Browser '{browser_name}' is not supported.")
-                logger.error(f"Unsupported browser: {browser_name}")
                 return None
 
-            # Try to get the remote URL in a way that works across Selenium versions
-            remote_url = None
-            if hasattr(self.driver.command_executor, "_url"):
-                remote_url = self.driver.command_executor._url
-            elif hasattr(self.driver.command_executor, "_client_config"):
-                remote_url = self.driver.command_executor._client_config.remote_server_addr
+            creation_flags = 0
+            if os.name == 'nt':
+                creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+            
+            proc = subprocess.Popen([driver_path, f"--port={port}"], creationflags=creation_flags)
+            time.sleep(2)
+            
+            if headless:
+                options.add_argument("--headless")
+            
+            remote_url = f"http://localhost:{port}"
+            self.driver = webdriver.Remote(command_executor=remote_url, options=options)
             
             session_data = {
                 "session_id": self.driver.session_id,
                 "url": remote_url,
-                "browser": browser_name
+                "browser": browser_name,
+                "driver_pid": proc.pid
             }
 
-            with open(session_file, "w") as f:
-                json.dump(session_data, f)
+            self._save_session(browser_name, session_data)
             
-            print(f"Aria session started with ID: {self.driver.session_id} using {browser_name}")
-            logger.info(f"Session started: {self.driver.session_id}")
+            print(f"Aria session started for {browser_name}")
             return self.driver
-        except WebDriverException as e:
-            print(f"Error starting browser session: {e}")
-            logger.error(f"WebDriverException during start_session: {e}")
-            return None
         except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-            logger.error(f"Unexpected error during start_session: {e}")
+            print(f"Error starting {browser_name} session: {e}")
             return None
 
-    def connect_to_session(self):
-        session_file = self.get_session_file_path()
-        if not os.path.exists(session_file):
+    def connect_to_session(self, browser_name=None):
+        if not browser_name:
+            browser_name = self._get_current_browser()
+        
+        if not browser_name:
+            # Fallback: pick any active browser
+            active = self.list_active_browsers()
+            if active:
+                browser_name = active[0]
+            else:
+                return None
+
+        session_data = self._load_session_data(browser_name)
+        if not session_data:
             return None
 
         try:
-            with open(session_file, "r") as f:
-                session_data = json.load(f)
-
-            browser_name = session_data.get("browser", "chrome")
-            
             if browser_name == "chrome":
                 options = ChromeOptions()
             elif browser_name == "firefox":
@@ -130,23 +170,87 @@ class AriaNavigator:
             elif browser_name == "edge":
                 options = EdgeOptions()
             else:
-                # Should not happen if session file is valid
                 return None
 
-            driver = webdriver.Remote(
+            driver = ReusableRemote(
                 command_executor=session_data["url"],
-                options=options
+                options=options,
+                session_id=session_data["session_id"]
             )
-            driver.session_id = session_data["session_id"]
+            # Verify it works
             _ = driver.current_url
             self.driver = driver
+            # Update current browser
+            with open(self.get_session_file_path(), "w") as f:
+                json.dump({"browser": browser_name}, f)
             return self.driver
-        except (WebDriverException, FileNotFoundError):
-            os.remove(session_file)
+        except Exception as e:
+            logger.error(f"Failed to connect to {browser_name} session: {e}")
+            session_file = self.get_session_file_path(browser_name)
+            if os.path.exists(session_file):
+                os.remove(session_file)
             return None
-        except Exception:
+
+    def list_active_browsers(self):
+        temp_dir = os.path.join(os.path.expanduser("~"), ".aria")
+        browsers = []
+        if os.path.exists(temp_dir):
+            for f in os.listdir(temp_dir):
+                if f.startswith("aria_session_") and f.endswith(".json") and f != "aria_session_current.json":
+                    browser_name = f[len("aria_session_"):-len(".json")]
+                    browsers.append(browser_name)
+        return browsers
+
+    def close_session(self, browser_name=None):
+        if not browser_name:
+            # Close all
+            browsers = self.list_active_browsers()
+            for b in browsers:
+                self.close_session(b)
+            return
+
+        logger.info(f"Closing {browser_name} session.")
+        session_file = self.get_session_file_path(browser_name)
+        session_data = self._load_session_data(browser_name)
+        
+        if session_data:
+            driver_pid = session_data.get("driver_pid")
+            try:
+                # Try to quit driver gracefully
+                if browser_name == "chrome":
+                    options = ChromeOptions()
+                elif browser_name == "firefox":
+                    options = FirefoxOptions()
+                elif browser_name == "edge":
+                    options = EdgeOptions()
+                
+                driver = webdriver.Remote(command_executor=session_data["url"], options=options)
+                driver.session_id = session_data["session_id"]
+                driver.quit()
+            except:
+                pass
+
+            if driver_pid:
+                import subprocess
+                try:
+                    if os.name == 'nt':
+                        subprocess.run(['taskkill', '/F', '/T', '/PID', str(driver_pid)], capture_output=True)
+                    else:
+                        import signal
+                        os.kill(driver_pid, signal.SIGTERM)
+                except:
+                    pass
+
+        if os.path.exists(session_file):
             os.remove(session_file)
-            return None
+        
+        # If we closed the current browser, clear current_session.json
+        if self._get_current_browser() == browser_name:
+            current_file = self.get_session_file_path()
+            if os.path.exists(current_file):
+                os.remove(current_file)
+        
+        print(f"Aria session for {browser_name} closed.")
 
     def navigate(self, url):
         if not self.driver:
@@ -168,31 +272,15 @@ class AriaNavigator:
             print(f"An unexpected error occurred during navigation: {e}")
             logger.error(f"Unexpected error during navigation to {url}: {e}")
 
-    def close_session(self):
-        logger.info("Closing browser session.")
-        session_file = self.get_session_file_path()
-        if not os.path.exists(session_file):
-            print("No active Aria session found.")
-            logger.warning("Attempted to close session but no session file found.")
-            return
-        
-        driver = self.connect_to_session()
-
-        if driver:
-            try:
-                driver.quit()
-                logger.info("Browser session closed successfully.")
-            except WebDriverException as e:
-                print(f"Error while closing the browser session: {e}")
-                logger.error(f"WebDriverException during close_session: {e}")
-            except Exception as e:
-                print(f"An unexpected error occurred while closing the session: {e}")
-                logger.error(f"Unexpected error during close_session: {e}")
-
-        if os.path.exists(session_file):
-            os.remove(session_file)
-        
-        print("Aria session closed.")
+    def navigate_with_prompt(self, prompt):
+        """Uses AI to determine where to navigate based on a prompt."""
+        logger.info(f"Navigating with prompt: {prompt}")
+        # In a real implementation, this would call Gemini to get a URL or perform a search.
+        # For now, we'll just do a search on DuckDuckGo as a heuristic.
+        import urllib.parse
+        search_url = f"https://duckduckgo.com/?q={urllib.parse.quote(prompt)}"
+        self.navigate(search_url)
+        print(f"Heuristic: Searching for '{prompt}' on DuckDuckGo.")
 
     def list_tabs(self):
         if not self.driver:
@@ -208,6 +296,7 @@ class AriaNavigator:
             for handle in self.driver.window_handles:
                 self.driver.switch_to.window(handle)
                 tabs.append({
+                    "id": handle,
                     "title": self.driver.title,
                     "url": self.driver.current_url
                 })
@@ -229,29 +318,34 @@ class AriaNavigator:
 
         try:
             handles = self.driver.window_handles
-            if isinstance(identifier, int):
-                if 1 <= identifier <= len(handles):
-                    self.driver.switch_to.window(handles[identifier - 1])
+            # 1. Try by handle (tab_id)
+            if identifier in handles:
+                self.driver.switch_to.window(identifier)
+                return True
+
+            # 2. Try by index (0-based)
+            try:
+                idx = int(identifier)
+                if 0 <= idx < len(handles):
+                    self.driver.switch_to.window(handles[idx])
                     return True
-                else:
-                    print(f"Invalid tab index: {identifier}")
-                    return False
+            except (ValueError, TypeError):
+                pass
             
-            elif isinstance(identifier, str):
-                original_window = self.driver.current_window_handle
-                for handle in handles:
-                    self.driver.switch_to.window(handle)
-                    if self.driver.title == identifier:
-                        return True
-                # If not found, switch back to original window
-                self.driver.switch_to.window(original_window)
-                print(f"Tab with title '{identifier}' not found.")
-                return False
+            # 3. Try by title
+            original_window = self.driver.current_window_handle
+            for handle in handles:
+                self.driver.switch_to.window(handle)
+                if self.driver.title == identifier:
+                    return True
+            
+            # If not found, switch back to original window
+            self.driver.switch_to.window(original_window)
+            print(f"Tab with identifier '{identifier}' not found.")
+            return False
         except WebDriverException as e:
             print(f"Error going to tab: {e}")
             return False
-        
-        return False
 
     def get_page_content(self):
         if not self.driver:
@@ -266,3 +360,22 @@ class AriaNavigator:
         except WebDriverException as e:
             print(f"Error getting page content: {e}")
             return ""
+
+    def new_tab(self, url="about:blank"):
+        if not self.driver:
+            self.driver = self.connect_to_session()
+        
+        if not self.driver:
+            print("No active session. Use 'aria open' to start a session.")
+            return False
+
+        try:
+            self.driver.execute_script(f"window.open('{url}', '_blank');")
+            # Switch to the new window
+            self.driver.switch_to.window(self.driver.window_handles[-1])
+            logger.info(f"Opened new tab with URL: {url}")
+            return True
+        except WebDriverException as e:
+            print(f"Error opening new tab: {e}")
+            logger.error(f"WebDriverException during new_tab: {e}")
+            return False

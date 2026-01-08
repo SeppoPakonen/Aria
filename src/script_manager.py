@@ -1,94 +1,134 @@
 import os
+import json
 from logger import get_logger
 
 logger = get_logger("script_manager")
 
 class ScriptManager:
     def __init__(self):
-        self.scripts_dir = os.path.join(os.path.expanduser("~"), ".aria", "scripts")
+        self.aria_dir = os.path.join(os.path.expanduser("~"), ".aria")
+        self.scripts_dir = os.path.join(self.aria_dir, "scripts")
+        self.metadata_file = os.path.join(self.scripts_dir, "metadata.json")
+        
         if not os.path.exists(self.scripts_dir):
             os.makedirs(self.scripts_dir)
-
-    def create_script(self, name: str) -> str | None:
-        """Creates a new script file."""
-        script_path = os.path.join(self.scripts_dir, f"{name}.py")
-        if os.path.exists(script_path):
-            print(f"Error: Script '{name}.py' already exists.")
-            logger.warning(f"Attempted to create existing script: {name}.py")
-            return None
         
+        if not os.path.exists(self.metadata_file):
+            with open(self.metadata_file, "w") as f:
+                json.dump({"scripts": []}, f)
+
+    def _load_metadata(self):
         try:
-            with open(script_path, "w") as f:
-                # You can add a template here later if you want
-                f.write("# Your new Aria script\n")
-            logger.info(f"Created new script: {script_path}")
-            return script_path
+            with open(self.metadata_file, "r") as f:
+                return json.load(f)
+        except (IOError, json.JSONDecodeError):
+            return {"scripts": []}
+
+    def _save_metadata(self, metadata):
+        try:
+            with open(self.metadata_file, "w") as f:
+                json.dump(metadata, f, indent=4)
         except IOError as e:
-            print(f"Error creating script file: {e}")
-            logger.error(f"IOError creating script {name}: {e}")
-            return None
+            logger.error(f"Failed to save metadata: {e}")
 
-    def list_scripts(self) -> list[str]:
-        """Returns a list of all script files."""
-        try:
-            files = os.listdir(self.scripts_dir)
-            logger.info(f"Listed scripts: {len(files)} found.")
-            return [f for f in files if os.path.isfile(os.path.join(self.scripts_dir, f))]
-        except OSError as e:
-            print(f"Error listing scripts: {e}")
-            logger.error(f"OSError listing scripts: {e}")
-            return []
-
-    def get_script_path(self, name: str) -> str | None:
-        """Returns the full path of a script if it exists."""
-        # Ensure we have the .py extension
-        if not name.endswith(".py"):
-            name += ".py"
+    def create_script(self, prompt: str, name: str = None) -> int:
+        """Creates a new script from a prompt."""
+        metadata = self._load_metadata()
+        script_id = len(metadata["scripts"])
         
-        script_path = os.path.join(self.scripts_dir, name)
-        if os.path.exists(script_path):
-            return script_path
+        if not name:
+            name = f"script_{script_id}"
+        
+        script_entry = {
+            "id": script_id,
+            "name": name,
+            "prompt": prompt,
+            "type": "prompt"
+        }
+        
+        metadata["scripts"].append(script_entry)
+        self._save_metadata(metadata)
+        logger.info(f"Created new script {script_id}: {prompt[:30]}...")
+        return script_id
+
+    def list_scripts(self) -> list[dict]:
+        """Returns a list of all scripts."""
+        metadata = self._load_metadata()
+        return metadata["scripts"]
+
+    def get_script(self, identifier) -> dict | None:
+        """Returns a script by ID or name."""
+        metadata = self._load_metadata()
+        try:
+            # Try by ID
+            idx = int(identifier)
+            for s in metadata["scripts"]:
+                if s["id"] == idx:
+                    return s
+        except (ValueError, TypeError):
+            # Try by name
+            for s in metadata["scripts"]:
+                if s["name"] == identifier:
+                    return s
         return None
 
-    def remove_script(self, name: str) -> bool:
-        """Deletes a script file."""
-        script_path = self.get_script_path(name)
-        if script_path:
-            try:
-                os.remove(script_path)
-                logger.info(f"Removed script: {script_path}")
-                return True
-            except OSError as e:
-                print(f"Error deleting script: {e}")
-                logger.error(f"OSError deleting script {name}: {e}")
-                return False
-        logger.warning(f"Attempted to remove non-existent script: {name}")
+    def edit_script(self, identifier, prompt: str) -> bool:
+        """Modifies the prompt of an existing script."""
+        metadata = self._load_metadata()
+        script = None
+        try:
+            idx = int(identifier)
+            for s in metadata["scripts"]:
+                if s["id"] == idx:
+                    script = s
+                    break
+        except (ValueError, TypeError):
+            for s in metadata["scripts"]:
+                if s["name"] == identifier:
+                    script = s
+                    break
+        
+        if script:
+            script["prompt"] = prompt
+            self._save_metadata(metadata)
+            logger.info(f"Edited script {identifier}")
+            return True
         return False
 
-    def run_script(self, name: str) -> bool:
-        """Executes a script file."""
-        import subprocess
-        import sys
+    def remove_script(self, identifier: str) -> bool:
+        """Deletes a script."""
+        metadata = self._load_metadata()
+        initial_count = len(metadata["scripts"])
         
-        script_path = self.get_script_path(name)
-        if script_path:
-            try:
-                print(f"Running script: {script_path}")
-                logger.info(f"Executing script: {script_path}")
-                # Use sys.executable to ensure we use the same Python interpreter
-                subprocess.run([sys.executable, script_path], check=True)
-                print(f"Script '{name}' completed successfully.")
-                logger.info(f"Script '{name}' execution completed successfully.")
-                return True
-            except subprocess.CalledProcessError as e:
-                print(f"Error: Script exited with error code {e.returncode}")
-                logger.error(f"Script '{name}' failed with return code {e.returncode}")
-                return False
-            except Exception as e:
-                print(f"Error running script: {e}")
-                logger.error(f"Unexpected error running script '{name}': {e}")
-                return False
-        else:
-            print(f"Error: Script '{name}' not found.")
-            logger.warning(f"Attempted to run non-existent script: {name}")
+        try:
+            idx = int(identifier)
+            metadata["scripts"] = [s for s in metadata["scripts"] if s["id"] != idx]
+        except (ValueError, TypeError):
+            metadata["scripts"] = [s for s in metadata["scripts"] if s["name"] != identifier]
+        
+        if len(metadata["scripts"]) < initial_count:
+            # Re-index remaining scripts to keep IDs consistent with list indices if desired,
+            # or just leave them. Runbook seems to imply stable IDs.
+            # For simplicity, we won't re-index but new scripts will get higher IDs.
+            self._save_metadata(metadata)
+            logger.info(f"Removed script: {identifier}")
+            return True
+        return False
+
+    def run_script(self, identifier: str, navigator=None) -> bool:
+        """Executes a script."""
+        script = self.get_script(identifier)
+        if not script:
+            print(f"Error: Script '{identifier}' not found.")
             return False
+        
+        print(f"Running script {script['id']}: {script['prompt']}")
+        
+        if script["type"] == "prompt":
+            if navigator:
+                navigator.navigate_with_prompt(script["prompt"])
+                return True
+            else:
+                print("Error: Navigator not provided to run prompt script.")
+                return False
+        return False
