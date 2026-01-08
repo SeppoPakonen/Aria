@@ -21,6 +21,9 @@ def main():
     parser_page_new.add_argument('url', type=str, help='The URL to navigate to.')
     page_subparsers.add_parser('list', help='List all open pages.')
 
+    parser_page_goto = page_subparsers.add_parser('goto', help='Go to a specific page.')
+    parser_page_goto.add_argument('identifier', type=str, help='The 1-based index or title of the page to go to.')
+
 
     args = parser.parse_args()
 
@@ -41,6 +44,19 @@ def main():
                     print(f"{i+1}: {tab['title']} - {tab['url']}")
             else:
                 print("No active session or no open tabs found.")
+        elif args.page_command == 'goto':
+            identifier = args.identifier
+            try:
+                # Try to convert to int for index-based navigation
+                identifier = int(identifier)
+            except ValueError:
+                # Keep as string for title-based navigation
+                pass
+            
+            if navigator.goto_tab(identifier):
+                print(f"Switched to page '{identifier}'.")
+            else:
+                print(f"Could not go to page '{identifier}'.")
     else:
         parser.print_help()
 
