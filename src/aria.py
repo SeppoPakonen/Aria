@@ -2,6 +2,7 @@ import argparse
 import os
 import google.generativeai as genai
 from navigator import AriaNavigator
+from script_manager import ScriptManager
 
 def summarize_text(text: str) -> str:
     """Summarizes the given text using the Gemini API."""
@@ -41,10 +42,17 @@ def main():
     parser_page_goto.add_argument('identifier', type=str, help='The 1-based index or title of the page to go to.')
     page_subparsers.add_parser('summarize', help='Summarize the current page.')
 
+    # Define the 'script' command
+    parser_script = subparsers.add_parser('script', help='Manage automation scripts.')
+    script_subparsers = parser_script.add_subparsers(dest="script_command", required=True)
+    parser_script_new = script_subparsers.add_parser('new', help='Create a new script.')
+    parser_script_new.add_argument('name', type=str, help='The name of the script to create.')
+
 
     args = parser.parse_args()
 
     navigator = AriaNavigator()
+    script_manager = ScriptManager()
 
     if args.command == 'open':
         if args.scope == 'web':
@@ -84,6 +92,11 @@ def main():
                 print(summary)
             else:
                 print("Could not retrieve content from the page.")
+    elif args.command == 'script':
+        if args.script_command == 'new':
+            script_path = script_manager.create_script(args.name)
+            if script_path:
+                print(f"Created new script: {script_path}")
     else:
         parser.print_help()
 
