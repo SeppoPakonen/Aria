@@ -361,6 +361,37 @@ class AriaNavigator:
             print(f"Error getting page content: {e}")
             return ""
 
+    def get_tabs_content(self, identifiers):
+        """Retrieves content from multiple tabs.
+        identifiers: list of tab indices, IDs, or titles.
+        Returns a list of dicts: {'identifier': ..., 'content': ..., 'title': ..., 'url': ...}
+        """
+        if not self.driver:
+            self.driver = self.connect_to_session()
+        
+        if not self.driver:
+            print("No active session. Use 'aria open' to start a session.")
+            return []
+
+        original_window = self.driver.current_window_handle
+        results = []
+        
+        for identifier in identifiers:
+            if self.goto_tab(identifier):
+                content = self.get_page_content()
+                results.append({
+                    "identifier": identifier,
+                    "title": self.driver.title,
+                    "url": self.driver.current_url,
+                    "content": content
+                })
+            else:
+                logger.warning(f"Could not switch to tab '{identifier}' to get content.")
+        
+        # Switch back to the original window
+        self.driver.switch_to.window(original_window)
+        return results
+
     def new_tab(self, url="about:blank"):
         if not self.driver:
             self.driver = self.connect_to_session()

@@ -28,10 +28,10 @@ Enhance the core `aria` CLI functionalities by improving user experience, adding
 
 ## Phases
 
-| ID | Name                                      | Objective                                                                     | Link                                                                                    | Status   |
-|----|-------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|----------|
-| 01 | Enhanced Tab Management                   | Improve `aria page` commands with robust `tab_id` handling and persistence.   | [Overview](./01-enhanced-tab-management/overview.md)                                    | Planned  |
-| 02 | Structured Prompt Outputs                 | Generate more organized and machine-readable outputs from AI prompts.         | [Overview](./02-structured-prompt-outputs/overview.md)                                  | Planned  |
+| ID | Name                                      | Objective                                                                     | Link                                                                                    | Status      |
+|----|-------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|-------------|
+| 01 | Multi-Page Interaction Refinement         | Improve aria page commands with robust tab synthesis and persistence.         | [Overview](./01-multi-page-interaction-refinement/plan.md)                              | In Progress |
+| 02 | Structured Prompt Outputs                 | Generate more organized and machine-readable outputs from AI prompts.         | [Overview](./02-structured-prompt-outputs/overview.md)                                  | Planned     |
 | 03 | Local Report Generation                   | Enable users to generate custom local reports from collected data.            | [Overview](./03-local-report-generation/overview.md)                                    | Planned  |
 | 04 | Script Parameterization Patterns          | Document and enable patterns for passing parameters to `aria` scripts.        | [Overview](./04-script-parameterization-patterns/overview.md)                           | Planned  |
 | 05 | Reliability and Error Handling            | Improve the overall stability and clarity of error messages within the CLI.   | [Overview](./05-reliability-error-handling/overview.md)                                 | Planned  |

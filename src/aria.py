@@ -1,6 +1,7 @@
 import argparse
 import os
 import google.generativeai as genai
+import re
 from navigator import AriaNavigator
 from script_manager import ScriptManager
 from safety_manager import SafetyManager
@@ -10,8 +11,8 @@ logger = get_logger("aria")
 
 VERSION = "0.1.0"
 
-def summarize_text(text: str) -> str:
-    """Summarizes the given text using the Gemini API."""
+def generate_ai_response(prompt: str, context: str = "") -> str:
+    """Generates a response from the AI given a prompt and optional context."""
     try:
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
@@ -19,10 +20,37 @@ def summarize_text(text: str) -> str:
         
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(f"Summarize the following text:\n\n{text}")
+        
+        full_prompt = prompt
+        if context:
+            full_prompt = f"Context:\n{context}\n\nUser Request: {prompt}"
+        
+        response = model.generate_content(full_prompt)
         return response.text
     except Exception as e:
-        return f"Error during summarization: {e}"
+        return f"Error during AI generation: {e}"
+
+def summarize_text(text: str) -> str:
+    """Summarizes the given text using the Gemini API."""
+    return generate_ai_response("Summarize the following text:", text)
+
+def resolve_prompt_and_get_content(prompt: str, navigator: AriaNavigator):
+    """Parses prompt for tab references and returns (enhanced_prompt, context)."""
+    # Look for 'tab 0', 'tab 1', etc.
+    tab_refs = re.findall(r'tab\s+(\d+)', prompt, re.IGNORECASE)
+    if not tab_refs:
+        return prompt, ""
+
+    # Unique identifiers
+    identifiers = list(set(tab_refs))
+    contents = navigator.get_tabs_content(identifiers)
+    
+    context_parts = []
+    for item in contents:
+        context_parts.append(f"--- Content from Tab {item['identifier']} (Title: {item['title']}, URL: {item['url']}) ---\n{item['content']}\n")
+    
+    context = "\n".join(context_parts)
+    return prompt, context
 
 def main():
     setup_logging()
@@ -168,8 +196,15 @@ def main():
                 if navigator.new_tab(url):
                     print(f"Opened new page and navigated to {url}")
             elif args.prompt:
-                if navigator.new_tab():
-                    navigator.navigate_with_prompt(args.prompt)
+                # Check for cross-tab synthesis
+                refined_prompt, context = resolve_prompt_and_get_content(args.prompt, navigator)
+                if context:
+                    print("Synthesizing information across tabs...")
+                    result = generate_ai_response(refined_prompt, context)
+                    print(result)
+                else:
+                    if navigator.new_tab():
+                        navigator.navigate_with_prompt(args.prompt)
             else:
                 # Default to blank new tab if no URL/prompt
                 if navigator.new_tab():
@@ -208,6 +243,15 @@ def main():
                 print("Error: Identifier, URL, or prompt required for 'page goto'.")
 
         elif args.page_command == 'summarize':
+            # Check for cross-tab synthesis in the prompt
+            if args.prompt:
+                refined_prompt, context = resolve_prompt_and_get_content(args.prompt, navigator)
+                if context:
+                    print("Synthesizing information across tabs for summary...")
+                    result = generate_ai_response(refined_prompt, context)
+                    print(result)
+                    return
+
             if args.identifier:
                 identifier = args.identifier
                 try:
