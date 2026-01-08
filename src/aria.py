@@ -50,6 +50,9 @@ def main():
     script_subparsers.add_parser('list', help='List all available scripts.')
     parser_script_edit = script_subparsers.add_parser('edit', help='Edit an existing script.')
     parser_script_edit.add_argument('name', type=str, help='The name of the script to edit.')
+    parser_script_remove = script_subparsers.add_parser('remove', help='Remove a script.')
+    parser_script_remove.add_argument('name', type=str, help='The name of the script to remove.')
+    parser_script_remove.add_argument('--force', action='store_true', help='Remove without confirmation.')
 
 
     args = parser.parse_args()
@@ -124,6 +127,17 @@ def main():
                         subprocess.run(["xdg-open", script_path])
             else:
                 print(f"Error: Script '{args.name}' not found.")
+        elif args.script_command == 'remove':
+            if not args.force:
+                confirm = input(f"Are you sure you want to remove script '{args.name}'? [y/N]: ")
+                if confirm.lower() != 'y':
+                    print("Aborted.")
+                    return
+            
+            if script_manager.remove_script(args.name):
+                print(f"Script '{args.name}' removed successfully.")
+            else:
+                print(f"Error: Script '{args.name}' not found or could not be removed.")
     else:
         parser.print_help()
 

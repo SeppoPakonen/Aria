@@ -41,3 +41,15 @@ class ScriptManager:
         if os.path.exists(script_path):
             return script_path
         return None
+
+    def remove_script(self, name: str) -> bool:
+        """Deletes a script file."""
+        script_path = self.get_script_path(name)
+        if script_path:
+            try:
+                os.remove(script_path)
+                return True
+            except OSError as e:
+                print(f"Error deleting script: {e}")
+                return False
+        return False
