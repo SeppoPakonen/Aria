@@ -20,6 +20,9 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 
 from selenium.webdriver.remote.webdriver import WebDriver
+from logger import get_logger
+
+logger = get_logger("navigator")
 
 SESSION_FILE = "aria_session.json"
 
@@ -34,13 +37,21 @@ class AriaNavigator:
             os.makedirs(temp_dir)
         return os.path.join(temp_dir, SESSION_FILE)
 
-    def start_session(self, browser_name="chrome", headless=False):
+    def start_session(self, browser_name="chrome", headless=False, force=False):
+        logger.info(f"Starting browser session: {browser_name} (headless={headless}, force={force})")
         session_file = self.get_session_file_path()
         if os.path.exists(session_file):
             if self.connect_to_session():
-                print("An Aria session is already active.")
-                return None
+                if force:
+                    print("Closing active session to start a new one...")
+                    logger.info("Closing active session due to force=True")
+                    self.close_session()
+                else:
+                    print("An Aria session is already active.")
+                    logger.warning("Attempted to start session while one is already active.")
+                    return None
             else:
+                logger.info("Cleaning up stale session file.")
                 os.remove(session_file)
 
         try:
@@ -70,11 +81,19 @@ class AriaNavigator:
                 )
             else:
                 print(f"Browser '{browser_name}' is not supported.")
+                logger.error(f"Unsupported browser: {browser_name}")
                 return None
 
+            # Try to get the remote URL in a way that works across Selenium versions
+            remote_url = None
+            if hasattr(self.driver.command_executor, "_url"):
+                remote_url = self.driver.command_executor._url
+            elif hasattr(self.driver.command_executor, "_client_config"):
+                remote_url = self.driver.command_executor._client_config.remote_server_addr
+            
             session_data = {
                 "session_id": self.driver.session_id,
-                "url": self.driver.command_executor._url,
+                "url": remote_url,
                 "browser": browser_name
             }
 
@@ -82,12 +101,15 @@ class AriaNavigator:
                 json.dump(session_data, f)
             
             print(f"Aria session started with ID: {self.driver.session_id} using {browser_name}")
+            logger.info(f"Session started: {self.driver.session_id}")
             return self.driver
         except WebDriverException as e:
             print(f"Error starting browser session: {e}")
+            logger.error(f"WebDriverException during start_session: {e}")
             return None
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
+            logger.error(f"Unexpected error during start_session: {e}")
             return None
 
     def connect_to_session(self):
@@ -132,20 +154,26 @@ class AriaNavigator:
         
         if not self.driver:
             print("No active session. Use 'aria open' to start a session.")
+            logger.warning("Attempted navigation without active session.")
             return
 
         try:
             print(f"Navigating to: {url}")
+            logger.info(f"Navigating to URL: {url}")
             self.driver.get(url)
         except WebDriverException as e:
             print(f"Error navigating to {url}: {e}")
+            logger.error(f"WebDriverException during navigation to {url}: {e}")
         except Exception as e:
             print(f"An unexpected error occurred during navigation: {e}")
+            logger.error(f"Unexpected error during navigation to {url}: {e}")
 
     def close_session(self):
+        logger.info("Closing browser session.")
         session_file = self.get_session_file_path()
         if not os.path.exists(session_file):
             print("No active Aria session found.")
+            logger.warning("Attempted to close session but no session file found.")
             return
         
         driver = self.connect_to_session()
@@ -153,10 +181,13 @@ class AriaNavigator:
         if driver:
             try:
                 driver.quit()
+                logger.info("Browser session closed successfully.")
             except WebDriverException as e:
                 print(f"Error while closing the browser session: {e}")
+                logger.error(f"WebDriverException during close_session: {e}")
             except Exception as e:
                 print(f"An unexpected error occurred while closing the session: {e}")
+                logger.error(f"Unexpected error during close_session: {e}")
 
         if os.path.exists(session_file):
             os.remove(session_file)

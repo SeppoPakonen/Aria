@@ -1,4 +1,7 @@
 import os
+from logger import get_logger
+
+logger = get_logger("script_manager")
 
 class ScriptManager:
     def __init__(self):
@@ -11,24 +14,29 @@ class ScriptManager:
         script_path = os.path.join(self.scripts_dir, f"{name}.py")
         if os.path.exists(script_path):
             print(f"Error: Script '{name}.py' already exists.")
+            logger.warning(f"Attempted to create existing script: {name}.py")
             return None
         
         try:
             with open(script_path, "w") as f:
                 # You can add a template here later if you want
                 f.write("# Your new Aria script\n")
+            logger.info(f"Created new script: {script_path}")
             return script_path
         except IOError as e:
             print(f"Error creating script file: {e}")
+            logger.error(f"IOError creating script {name}: {e}")
             return None
 
     def list_scripts(self) -> list[str]:
         """Returns a list of all script files."""
         try:
             files = os.listdir(self.scripts_dir)
+            logger.info(f"Listed scripts: {len(files)} found.")
             return [f for f in files if os.path.isfile(os.path.join(self.scripts_dir, f))]
         except OSError as e:
             print(f"Error listing scripts: {e}")
+            logger.error(f"OSError listing scripts: {e}")
             return []
 
     def get_script_path(self, name: str) -> str | None:
@@ -48,10 +56,13 @@ class ScriptManager:
         if script_path:
             try:
                 os.remove(script_path)
+                logger.info(f"Removed script: {script_path}")
                 return True
             except OSError as e:
                 print(f"Error deleting script: {e}")
+                logger.error(f"OSError deleting script {name}: {e}")
                 return False
+        logger.warning(f"Attempted to remove non-existent script: {name}")
         return False
 
     def run_script(self, name: str) -> bool:
@@ -63,15 +74,21 @@ class ScriptManager:
         if script_path:
             try:
                 print(f"Running script: {script_path}")
+                logger.info(f"Executing script: {script_path}")
                 # Use sys.executable to ensure we use the same Python interpreter
                 subprocess.run([sys.executable, script_path], check=True)
+                print(f"Script '{name}' completed successfully.")
+                logger.info(f"Script '{name}' execution completed successfully.")
                 return True
             except subprocess.CalledProcessError as e:
                 print(f"Error: Script exited with error code {e.returncode}")
+                logger.error(f"Script '{name}' failed with return code {e.returncode}")
                 return False
             except Exception as e:
                 print(f"Error running script: {e}")
+                logger.error(f"Unexpected error running script '{name}': {e}")
                 return False
         else:
             print(f"Error: Script '{name}' not found.")
+            logger.warning(f"Attempted to run non-existent script: {name}")
             return False

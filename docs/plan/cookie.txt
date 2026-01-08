@@ -4,10 +4,10 @@ This file tracks the completed and upcoming tasks in the project plan. It should
 
 ### Last Completed Task
 - **Track**: 01-implement-underlying-framework-and-mvp
-- **Phase**: 05-script-management-fundamentals
-- **Task**: 05-implement-script-run-command
+- **Phase**: 07-logging-basic-diagnostics
+- **Task**: 03-implement-diagnostics-command
 
 ### Next Task to Implement
 - **Track**: 01-implement-underlying-framework-and-mvp
-- **Phase**: 06-cli-safety-user-feedback
-- **Task**: 01-implement-safety-warnings-and-disclaimers
+- **Phase**: 08-runbook-alignment-validation
+- **Task**: 01-validate-page-commands
