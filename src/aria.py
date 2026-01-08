@@ -36,13 +36,21 @@ def summarize_text(text: str) -> str:
 
 def resolve_prompt_and_get_content(prompt: str, navigator: AriaNavigator):
     """Parses prompt for tab references and returns (enhanced_prompt, context)."""
-    # Look for 'tab 0', 'tab 1', etc.
-    tab_refs = re.findall(r'tab\s+(\d+)', prompt, re.IGNORECASE)
-    if not tab_refs:
+    # 1. Look for 'tag:NAME'
+    tag_matches = re.findall(r'tag:([^\s,;?!\.]+)', prompt, re.IGNORECASE)
+    tag_identifiers = []
+    for tag in tag_matches:
+        tag_identifiers.extend(navigator.get_tabs_by_tag(tag))
+
+    # 2. Look for 'tab 0', 'tab "My Page"', 'tab google', etc.
+    # Matches 'tab 123' or 'tab "quoted string"' or 'tab unquoted_word'
+    matches = re.findall(r'tab\s+(?:"([^"]+)"|([^\s,;?!\.]+))', prompt, re.IGNORECASE)
+    
+    # Unique identifiers
+    identifiers = list(set(tag_identifiers + [m[0] or m[1] for m in matches]))
+    if not identifiers:
         return prompt, ""
 
-    # Unique identifiers
-    identifiers = list(set(tab_refs))
     contents = navigator.get_tabs_content(identifiers)
     
     context_parts = []
@@ -115,6 +123,10 @@ def main():
     parser_page_summarize = page_subparsers.add_parser('summarize', help='Summarize a page.')
     parser_page_summarize.add_argument('identifier', type=str, nargs='?', help='The index (0-based), ID or title of the page.')
     parser_page_summarize.add_argument('prompt', type=str, nargs='?', help='Specific instructions for summarization.')
+
+    parser_page_tag = page_subparsers.add_parser('tag', help='Tag a page.')
+    parser_page_tag.add_argument('identifier', type=str, help='The index, ID or title of the page.')
+    parser_page_tag.add_argument('tag', type=str, help='The tag to add.')
 
     # Define the 'script' command
     parser_script = subparsers.add_parser('script', help='Manage automation scripts.')
@@ -214,7 +226,8 @@ def main():
             if tabs:
                 print("Open pages:")
                 for i, tab in enumerate(tabs):
-                    print(f"{i}: ({tab['id'][:8]}) \"{tab['title']}\" - {tab['url']}")
+                    tag_str = f" [tags: {', '.join(tab['tags'])}]" if tab.get('tags') else ""
+                    print(f"{i}: ({tab['id'][:8]}) \"{tab['title']}\" - {tab['url']}{tag_str}")
             else:
                 print("No active session or no open tabs found.")
         elif args.page_command == 'goto':
@@ -241,6 +254,10 @@ def main():
                 print(f"Switched to page '{args.identifier}'.")
             else:
                 print("Error: Identifier, URL, or prompt required for 'page goto'.")
+
+        elif args.page_command == 'tag':
+            if not navigator.tag_tab(args.identifier, args.tag):
+                print(f"Error: Could not tag page '{args.identifier}'.")
 
         elif args.page_command == 'summarize':
             # Check for cross-tab synthesis in the prompt

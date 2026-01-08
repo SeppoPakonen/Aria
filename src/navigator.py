@@ -57,6 +57,76 @@ class AriaNavigator:
         with open(self.get_session_file_path(), "w") as f:
             json.dump({"browser": browser_name}, f)
 
+    def tag_tab(self, identifier, tag):
+        """Adds a tag to a tab."""
+        if not self.driver:
+            self.driver = self.connect_to_session()
+        if not self.driver:
+            return False
+
+        if self.goto_tab(identifier):
+            handle = self.driver.current_window_handle
+            browser_name = self._get_current_browser()
+            session_data = self._load_session_data(browser_name)
+            if session_data:
+                tags = session_data.get("tags", {})
+                if handle not in tags:
+                    tags[handle] = []
+                if tag not in tags[handle]:
+                    tags[handle].append(tag)
+                session_data["tags"] = tags
+                self._save_session(browser_name, session_data)
+                print(f"Tagged tab '{identifier}' with '{tag}'.")
+                return True
+        return False
+
+    def get_tabs_by_tag(self, tag):
+        """Returns handles of tabs that have the given tag."""
+        browser_name = self._get_current_browser()
+        session_data = self._load_session_data(browser_name)
+        if not session_data or "tags" not in session_data:
+            return []
+        
+        handles = []
+        all_tags = session_data["tags"]
+        available_handles = self.driver.window_handles if self.driver else []
+        
+        for handle, tags in all_tags.items():
+            if tag in tags and handle in available_handles:
+                handles.append(handle)
+        return handles
+
+    def list_tabs(self):
+        if not self.driver:
+            self.driver = self.connect_to_session()
+        
+        if not self.driver:
+            return []
+
+        tabs = []
+        original_window = self.driver.current_window_handle
+        
+        browser_name = self._get_current_browser()
+        session_data = self._load_session_data(browser_name)
+        all_tags = session_data.get("tags", {}) if session_data else {}
+
+        try:
+            for handle in self.driver.window_handles:
+                self.driver.switch_to.window(handle)
+                tabs.append({
+                    "id": handle,
+                    "title": self.driver.title,
+                    "url": self.driver.current_url,
+                    "tags": all_tags.get(handle, [])
+                })
+            # Switch back to the original window
+            self.driver.switch_to.window(original_window)
+        except WebDriverException as e:
+            logger.error(f"Error listing tabs: {e}")
+            return []
+        
+        return tabs
+
     def _get_current_browser(self):
         current_file = self.get_session_file_path()
         if os.path.exists(current_file):
@@ -282,32 +352,6 @@ class AriaNavigator:
         self.navigate(search_url)
         print(f"Heuristic: Searching for '{prompt}' on DuckDuckGo.")
 
-    def list_tabs(self):
-        if not self.driver:
-            self.driver = self.connect_to_session()
-        
-        if not self.driver:
-            return []
-
-        tabs = []
-        original_window = self.driver.current_window_handle
-
-        try:
-            for handle in self.driver.window_handles:
-                self.driver.switch_to.window(handle)
-                tabs.append({
-                    "id": handle,
-                    "title": self.driver.title,
-                    "url": self.driver.current_url
-                })
-            # Switch back to the original window
-            self.driver.switch_to.window(original_window)
-        except WebDriverException as e:
-            print(f"Error listing tabs: {e}")
-            return []
-        
-        return tabs
-
     def goto_tab(self, identifier):
         if not self.driver:
             self.driver = self.connect_to_session()
@@ -318,9 +362,13 @@ class AriaNavigator:
 
         try:
             handles = self.driver.window_handles
-            # 1. Try by handle (tab_id)
-            if identifier in handles:
-                self.driver.switch_to.window(identifier)
+            
+            # Normalize identifier
+            str_ident = str(identifier)
+
+            # 1. Try by handle (exact match)
+            if str_ident in handles:
+                self.driver.switch_to.window(str_ident)
                 return True
 
             # 2. Try by index (0-based)
@@ -332,19 +380,40 @@ class AriaNavigator:
             except (ValueError, TypeError):
                 pass
             
-            # 3. Try by title
-            original_window = self.driver.current_window_handle
+            # Store original handle to revert if no match is found
+            original_handle = self.driver.current_window_handle
+
+            # 3. Try by partial handle match (if it looks like a handle or is reasonably long)
+            if len(str_ident) >= 5:
+                for handle in handles:
+                    if str_ident in handle:
+                        self.driver.switch_to.window(handle)
+                        return True
+
+            # 4. Try by title (exact match, case-sensitive)
             for handle in handles:
                 self.driver.switch_to.window(handle)
-                if self.driver.title == identifier:
+                if self.driver.title == str_ident:
+                    return True
+
+            # 5. Try by title (partial, case-insensitive)
+            for handle in handles:
+                self.driver.switch_to.window(handle)
+                if str_ident.lower() in self.driver.title.lower():
                     return True
             
+            # 6. Try by URL (partial)
+            for handle in handles:
+                self.driver.switch_to.window(handle)
+                if str_ident in self.driver.current_url:
+                    return True
+
             # If not found, switch back to original window
-            self.driver.switch_to.window(original_window)
-            print(f"Tab with identifier '{identifier}' not found.")
+            self.driver.switch_to.window(original_handle)
+            logger.info(f"Tab with identifier '{identifier}' not found.")
             return False
         except WebDriverException as e:
-            print(f"Error going to tab: {e}")
+            logger.error(f"Error going to tab: {e}")
             return False
 
     def get_page_content(self):

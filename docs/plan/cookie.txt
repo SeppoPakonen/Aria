@@ -5,9 +5,9 @@ This file tracks the completed and upcoming tasks in the project plan. It should
 ### Last Completed Task
 - **Track**: 02-implement-intermediate-level-features
 - **Phase**: 01-multi-page-interaction-refinement
-- **Task**: 01-implement-cross-tab-content-synthesis
+- **Task**: 03-implement-basic-tab-grouping-tagging
 
 ### Next Task to Implement
 - **Track**: 02-implement-intermediate-level-features
-- **Phase**: 01-multi-page-interaction-refinement
-- **Task**: 02-improve-tab-selection-and-persistence
+- **Phase**: 02-structured-prompt-outputs
+- **Task**: 01-implement-json-output-format

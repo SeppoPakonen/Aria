@@ -31,6 +31,54 @@ class TestSynthesis(unittest.TestCase):
         self.assertIn('0', call_args)
         self.assertIn('1', call_args)
 
+    def test_resolve_prompt_with_quoted_tabs(self):
+        mock_navigator = MagicMock()
+        mock_navigator.get_tabs_content.return_value = [
+            {'identifier': 'Google Search', 'title': 'Google', 'url': 'http://google.com', 'content': 'Google Content'}
+        ]
+        
+        prompt = "Look at tab \"Google Search\" and summarize"
+        refined_prompt, context = resolve_prompt_and_get_content(prompt, mock_navigator)
+        
+        self.assertIn("Google Content", context)
+        mock_navigator.get_tabs_content.assert_called_with(['Google Search'])
+
+    def test_resolve_prompt_with_named_tab(self):
+        mock_navigator = MagicMock()
+        mock_navigator.get_tabs_content.return_value = [
+            {'identifier': 'google', 'title': 'Google', 'url': 'http://google.com', 'content': 'Google Content'}
+        ]
+        
+        prompt = "Look at tab google and summarize"
+        refined_prompt, context = resolve_prompt_and_get_content(prompt, mock_navigator)
+        
+        self.assertIn("Google Content", context)
+        mock_navigator.get_tabs_content.assert_called_with(['google'])
+
+    def test_resolve_prompt_multiple_mixed(self):
+        mock_navigator = MagicMock()
+        mock_navigator.get_tabs_content.return_value = []
+        
+        prompt = "Compare tab 0, tab \"My Page\" and tab news."
+        resolve_prompt_and_get_content(prompt, mock_navigator)
+        
+        call_args = set(mock_navigator.get_tabs_content.call_args[0][0])
+        self.assertEqual(call_args, {'0', 'My Page', 'news'})
+
+    def test_resolve_prompt_with_tag(self):
+        mock_navigator = MagicMock()
+        mock_navigator.get_tabs_by_tag.return_value = ['handle_news_1']
+        mock_navigator.get_tabs_content.return_value = [
+            {'identifier': 'handle_news_1', 'title': 'News', 'url': 'http://news.com', 'content': 'News Content'}
+        ]
+        
+        prompt = "Look at tag:news and summarize"
+        refined_prompt, context = resolve_prompt_and_get_content(prompt, mock_navigator)
+        
+        self.assertIn("News Content", context)
+        mock_navigator.get_tabs_by_tag.assert_called_with('news')
+        mock_navigator.get_tabs_content.assert_called_with(['handle_news_1'])
+
     def test_resolve_prompt_no_tabs(self):
         mock_navigator = MagicMock()
         prompt = "Just a regular prompt"
