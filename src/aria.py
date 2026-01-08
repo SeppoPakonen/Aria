@@ -10,20 +10,22 @@ def main():
     parser_open.add_argument('url', type=str, help='The URL to navigate to.')
     parser_open.add_argument('--headless', action='store_true', help='Run the browser in headless mode.')
 
+    # Define the 'close' command
+    parser_close = subparsers.add_parser('close', help='Close the browser window.')
+
     args = parser.parse_args()
 
     if args.command == 'open':
         navigator = AriaNavigator(headless=args.headless)
-        try:
-            navigator.navigate(args.url)
-            # Keep the browser open for a while for the user to see.
-            # In a real scenario, we would not close it immediately
-            # or would have a separate 'close' command.
-            print(f"Successfully navigated to {args.url}. Browser will close in 30 seconds.")
-            import time
-            time.sleep(30)
-        finally:
-            navigator.close()
+        navigator.navigate(args.url)
+        print(f"Successfully navigated to {args.url}. The browser will remain open.")
+        # The navigator object is lost after the command finishes.
+        # We need a way to persist the driver session.
+        # This will be addressed in a future task.
+    elif args.command == 'close':
+        # This is a placeholder. We need to implement state management
+        # to get access to the active navigator instance.
+        print("Closing the browser... (This is a placeholder and will be implemented in a future task)")
     else:
         parser.print_help()
 

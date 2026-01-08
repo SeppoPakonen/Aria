@@ -21,6 +21,8 @@ class AriaNavigator:
         self.driver.get(url)
 
     def close(self):
-        self.driver.quit()
+        if self.driver:
+            self.driver.quit()
+            self.driver = None
 
 
