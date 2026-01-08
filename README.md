@@ -38,6 +38,16 @@ Aria is architected with a "Pro-Product" mindset. While it solves individual pai
 
 ---
 
+## 🔌 Selenium Hybrid Scripts
+
+Aria also provides specialized scripts to facilitate a "hybrid" Selenium workflow. These scripts launch browsers (Chromium/Chrome and Firefox on both Linux and Windows) in a way that allows both normal user interaction and later attachment by automation tools.
+
+The scripts employ a HEURISTIC to select the most recently used browser profile, which can be useful for maintaining consistent browsing environments.
+
+For detailed usage instructions, warnings, and environmental variables, please refer to the `selenium_hybrid_scripts/README.txt` file.
+
+---
+
 ## 🛠️ Prerequisites & Installation
 
 Aria utilizes industry-standard webdrivers to securely and effectively pilot your browser.
