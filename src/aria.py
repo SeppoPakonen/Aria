@@ -14,6 +14,12 @@ def main():
     # Define the 'close' command
     subparsers.add_parser('close', help='Close the browser window.')
 
+    # Define the 'page' command
+    parser_page = subparsers.add_parser('page', help='Manage browser pages.')
+    page_subparsers = parser_page.add_subparsers(dest="page_command", required=True)
+    parser_page_new = page_subparsers.add_parser('new', help='Navigate to a new URL.')
+    parser_page_new.add_argument('url', type=str, help='The URL to navigate to.')
+
     args = parser.parse_args()
 
     navigator = AriaNavigator()
@@ -23,6 +29,9 @@ def main():
             navigator.navigate(args.url)
     elif args.command == 'close':
         navigator.close_session()
+    elif args.command == 'page':
+        if args.page_command == 'new':
+            navigator.navigate(args.url)
     else:
         parser.print_help()
 
