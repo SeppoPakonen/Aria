@@ -1,0 +1,3 @@
+## Gemini Added Memories
+- The assembly configuration in Maestro now uses directory roots (as in U++ .var files) instead of package names. Include paths in builds are restricted to these roots and package-specific options.
+- The assembly configuration system has been fully updated to support U++ .var files and .upp options section. The changes have been pushed to origin/main.
