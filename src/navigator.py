@@ -23,11 +23,4 @@ class AriaNavigator:
     def close(self):
         self.driver.quit()
 
-if __name__ == "__main__":
-    # Basic smoke test
-    navigator = AriaNavigator(headless=False)
-    try:
-        navigator.navigate("https://www.google.com")
-        print(f"Page title: {navigator.driver.title}")
-    finally:
-        navigator.close()
+

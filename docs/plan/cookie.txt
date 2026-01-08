@@ -5,9 +5,9 @@ This file tracks the completed and upcoming tasks in the project plan. It should
 ### Last Completed Task
 - **Track**: 01-implement-underlying-framework-and-mvp
 - **Phase**: 02-browser-lifecycle
-- **Task**: 01-webdriver-integration
+- **Task**: 03-browser-configuration-headless-gui
 
 ### Next Task to Implement
 - **Track**: 01-implement-underlying-framework-and-mvp
 - **Phase**: 02-browser-lifecycle
-- **Task**: 02-implement-aria-open-basic
+- **Task**: 04-implement-aria-close
