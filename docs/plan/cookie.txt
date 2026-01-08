@@ -4,10 +4,10 @@ This file tracks the completed and upcoming tasks in the project plan. It should
 
 ### Last Completed Task
 - **Track**: 01-implement-underlying-framework-and-mvp
-- **Phase**: 03-page-navigation-information-retrieval
-- **Task**: 04-implement-aria-page-summarize
+- **Phase**: 04-scope-management
+- **Task**: 01-implement-scope-handling-for-open
 
 ### Next Task to Implement
 - **Track**: 01-implement-underlying-framework-and-mvp
-- **Phase**: 04-scope-management
-- **Task**: 01-implement-scope-handling-for-open
+- **Phase**: 05-script-management-fundamentals
+- **Task**: 01-implement-script-new-command

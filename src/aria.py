@@ -26,6 +26,7 @@ def main():
     parser_open.add_argument('url', type=str, help='The URL to navigate to.')
     parser_open.add_argument('--headless', action='store_true', help='Run the browser in headless mode.')
     parser_open.add_argument('--browser', type=str, default='chrome', choices=['chrome', 'firefox', 'edge'], help='The browser to use.')
+    parser_open.add_argument('--scope', type=str, default='web', choices=['web', 'bookmarks', 'local'], help='The scope of the resource to open.')
 
     # Define the 'close' command
     subparsers.add_parser('close', help='Close the browser window.')
@@ -46,8 +47,11 @@ def main():
     navigator = AriaNavigator()
 
     if args.command == 'open':
-        if navigator.start_session(browser_name=args.browser, headless=args.headless):
-            navigator.navigate(args.url)
+        if args.scope == 'web':
+            if navigator.start_session(browser_name=args.browser, headless=args.headless):
+                navigator.navigate(args.url)
+        else:
+            print(f"Scope '{args.scope}' is not yet implemented.")
     elif args.command == 'close':
         navigator.close_session()
     elif args.command == 'page':
