@@ -4,10 +4,10 @@ This file tracks the completed and upcoming tasks in the project plan. It should
 
 ### Last Completed Task
 - **Track**: 02-implement-intermediate-level-features
-- **Phase**: 01-multi-page-interaction-refinement
-- **Task**: 03-implement-basic-tab-grouping-tagging
+- **Phase**: 02-structured-prompt-outputs
+- **Task**: 03-implement-automatic-format-detection
 
 ### Next Task to Implement
 - **Track**: 02-implement-intermediate-level-features
-- **Phase**: 02-structured-prompt-outputs
-- **Task**: 01-implement-json-output-format
+- **Phase**: 03-local-report-generation
+- **Task**: 01-implement-basic-report-template

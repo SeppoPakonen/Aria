@@ -1,14 +1,45 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import sys
 import os
 
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from aria import resolve_prompt_and_get_content
+from aria import resolve_prompt_and_get_content, generate_ai_response, summarize_text
 
 class TestSynthesis(unittest.TestCase):
+    @patch('google.generativeai.GenerativeModel')
+    @patch('os.environ.get')
+    def test_generate_ai_response_json(self, mock_env, mock_model_class):
+        mock_env.return_value = 'dummy_key'
+        mock_model = MagicMock()
+        mock_model_class.return_value = mock_model
+        mock_model.generate_content.return_value.text = "```json\n{\"test\": 1}\n```"
+        
+        result = generate_ai_response("test prompt", output_format="json")
+        
+        # Check if JSON cleanup worked
+        self.assertEqual(result, "{\"test\": 1}")
+        
+        # Check if prompt was enhanced
+        args, _ = mock_model.generate_content.call_args
+        self.assertIn("ONLY valid JSON", args[0])
+
+    @patch('google.generativeai.GenerativeModel')
+    @patch('os.environ.get')
+    def test_summarize_text_json(self, mock_env, mock_model_class):
+        mock_env.return_value = 'dummy_key'
+        mock_model = MagicMock()
+        mock_model_class.return_value = mock_model
+        mock_model.generate_content.return_value.text = "{\"summary\": \"ok\"}"
+        
+        result = summarize_text("some text", output_format="json")
+        self.assertEqual(result, "{\"summary\": \"ok\"}")
+        
+        args, _ = mock_model.generate_content.call_args
+        self.assertIn("valid JSON with keys", args[0])
+
     def test_resolve_prompt_with_tabs(self):
         mock_navigator = MagicMock()
         mock_navigator.get_tabs_content.return_value = [

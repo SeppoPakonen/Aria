@@ -11,7 +11,7 @@ logger = get_logger("aria")
 
 VERSION = "0.1.0"
 
-def generate_ai_response(prompt: str, context: str = "") -> str:
+def generate_ai_response(prompt: str, context: str = "", output_format: str = "text") -> str:
     """Generates a response from the AI given a prompt and optional context."""
     try:
         api_key = os.environ.get("GEMINI_API_KEY")
@@ -25,14 +25,30 @@ def generate_ai_response(prompt: str, context: str = "") -> str:
         if context:
             full_prompt = f"Context:\n{context}\n\nUser Request: {prompt}"
         
+        if output_format == "json":
+            full_prompt += "\n\nIMPORTANT: Return ONLY valid JSON. Do not include markdown code blocks or any other text."
+        elif output_format == "markdown":
+            full_prompt += "\n\nIMPORTANT: Use Markdown formatting."
+        
         response = model.generate_content(full_prompt)
-        return response.text
+        text = response.text
+        
+        # Simple cleanup if AI includes markdown code blocks
+        if output_format == "json" and text.startswith("```json"):
+            text = text.replace("```json", "", 1).replace("```", "", 1).strip()
+        elif output_format == "json" and text.startswith("```"):
+            text = text.replace("```", "", 1).replace("```", "", 1).strip()
+            
+        return text
     except Exception as e:
         return f"Error during AI generation: {e}"
 
-def summarize_text(text: str) -> str:
+def summarize_text(text: str, output_format: str = "text") -> str:
     """Summarizes the given text using the Gemini API."""
-    return generate_ai_response("Summarize the following text:", text)
+    prompt = "Summarize the following text:"
+    if output_format == "json":
+        prompt = "Summarize the following text and return it as valid JSON with keys 'summary', 'key_points' (list), and 'overall_sentiment':"
+    return generate_ai_response(prompt, text, output_format=output_format)
 
 def resolve_prompt_and_get_content(prompt: str, navigator: AriaNavigator):
     """Parses prompt for tab references and returns (enhanced_prompt, context)."""
@@ -111,6 +127,7 @@ def main():
     parser_page_new.add_argument('--url', type=str, dest='url_opt', help='The URL to navigate to.')
     parser_page_new.add_argument('--prompt', type=str, help='Prompt to generate content (not fully implemented).')
     parser_page_new.add_argument('--scope', type=str, default='web', choices=['web', 'local'], help='Scope for the new page.')
+    parser_page_new.add_argument('--format', type=str, choices=['text', 'json', 'markdown'], default='text', help='Output format for prompt generation.')
 
     page_subparsers.add_parser('list', help='List all open pages.')
     
@@ -123,6 +140,7 @@ def main():
     parser_page_summarize = page_subparsers.add_parser('summarize', help='Summarize a page.')
     parser_page_summarize.add_argument('identifier', type=str, nargs='?', help='The index (0-based), ID or title of the page.')
     parser_page_summarize.add_argument('prompt', type=str, nargs='?', help='Specific instructions for summarization.')
+    parser_page_summarize.add_argument('--format', type=str, choices=['text', 'json', 'markdown'], default='text', help='Output format for the summary.')
 
     parser_page_tag = page_subparsers.add_parser('tag', help='Tag a page.')
     parser_page_tag.add_argument('identifier', type=str, help='The index, ID or title of the page.')
@@ -170,6 +188,15 @@ def main():
     args = parser.parse_args()
     logger.info(f"Command received: {args.command}")
 
+    # Auto-detect format from prompt for certain commands
+    if args.command == 'page' and args.page_command in ['new', 'summarize']:
+        if hasattr(args, 'format') and args.format == 'text':
+            prompt_text = (args.prompt or "").lower()
+            if "json" in prompt_text:
+                args.format = "json"
+            elif "table" in prompt_text or "markdown" in prompt_text:
+                args.format = "markdown"
+
     navigator = AriaNavigator()
     script_manager = ScriptManager()
     safety_manager = SafetyManager()
@@ -212,7 +239,7 @@ def main():
                 refined_prompt, context = resolve_prompt_and_get_content(args.prompt, navigator)
                 if context:
                     print("Synthesizing information across tabs...")
-                    result = generate_ai_response(refined_prompt, context)
+                    result = generate_ai_response(refined_prompt, context, output_format=args.format)
                     print(result)
                 else:
                     if navigator.new_tab():
@@ -265,7 +292,7 @@ def main():
                 refined_prompt, context = resolve_prompt_and_get_content(args.prompt, navigator)
                 if context:
                     print("Synthesizing information across tabs for summary...")
-                    result = generate_ai_response(refined_prompt, context)
+                    result = generate_ai_response(refined_prompt, context, output_format=args.format)
                     print(result)
                     return
 
@@ -282,7 +309,7 @@ def main():
             content = navigator.get_page_content()
             if content:
                 prompt = args.prompt or "Summarize the following text:"
-                summary = summarize_text(f"{prompt}\n\n{content}")
+                summary = summarize_text(f"{prompt}\n\n{content}", output_format=args.format)
                 print(summary)
             else:
                 print("Could not retrieve content from the page.")
