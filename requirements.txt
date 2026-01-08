@@ -1,0 +1,5 @@
+selenium
+webdriver-manager
+# openai  # Uncomment if using OpenAI
+# anthropic # Uncomment if using Anthropic
+# python-dotenv
