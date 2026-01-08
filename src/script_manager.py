@@ -21,3 +21,12 @@ class ScriptManager:
         except IOError as e:
             print(f"Error creating script file: {e}")
             return None
+
+    def list_scripts(self) -> list[str]:
+        """Returns a list of all script files."""
+        try:
+            files = os.listdir(self.scripts_dir)
+            return [f for f in files if os.path.isfile(os.path.join(self.scripts_dir, f))]
+        except OSError as e:
+            print(f"Error listing scripts: {e}")
+            return []

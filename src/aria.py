@@ -47,6 +47,7 @@ def main():
     script_subparsers = parser_script.add_subparsers(dest="script_command", required=True)
     parser_script_new = script_subparsers.add_parser('new', help='Create a new script.')
     parser_script_new.add_argument('name', type=str, help='The name of the script to create.')
+    script_subparsers.add_parser('list', help='List all available scripts.')
 
 
     args = parser.parse_args()
@@ -97,6 +98,14 @@ def main():
             script_path = script_manager.create_script(args.name)
             if script_path:
                 print(f"Created new script: {script_path}")
+        elif args.script_command == 'list':
+            scripts = script_manager.list_scripts()
+            if scripts:
+                print("Available scripts:")
+                for script in scripts:
+                    print(f"- {script}")
+            else:
+                print("No scripts found.")
     else:
         parser.print_help()
 
