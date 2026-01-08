@@ -9,6 +9,7 @@ def main():
     parser_open = subparsers.add_parser('open', help='Open a URL in a new browser window.')
     parser_open.add_argument('url', type=str, help='The URL to navigate to.')
     parser_open.add_argument('--headless', action='store_true', help='Run the browser in headless mode.')
+    parser_open.add_argument('--browser', type=str, default='chrome', choices=['chrome', 'firefox', 'edge'], help='The browser to use.')
 
     # Define the 'close' command
     subparsers.add_parser('close', help='Close the browser window.')
@@ -18,7 +19,7 @@ def main():
     navigator = AriaNavigator()
 
     if args.command == 'open':
-        if navigator.start_session(headless=args.headless):
+        if navigator.start_session(browser_name=args.browser, headless=args.headless):
             navigator.navigate(args.url)
     elif args.command == 'close':
         navigator.close_session()

@@ -2,9 +2,22 @@ import os
 import json
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+
+# Webdriver managers
 from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.firefox import GeckoDriverManager
+from webdriver_manager.microsoft import EdgeChromiumDriverManager
+
+# Webdriver services
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.edge.service import Service as EdgeService
+
+# Webdriver options
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
+from selenium.webdriver.edge.options import Options as EdgeOptions
+
 from selenium.webdriver.remote.webdriver import WebDriver
 
 SESSION_FILE = "aria_session.json"
@@ -20,7 +33,7 @@ class AriaNavigator:
             os.makedirs(temp_dir)
         return os.path.join(temp_dir, SESSION_FILE)
 
-    def start_session(self, headless=False):
+    def start_session(self, browser_name="chrome", headless=False):
         session_file = self.get_session_file_path()
         if os.path.exists(session_file):
             if self.connect_to_session():
@@ -30,24 +43,44 @@ class AriaNavigator:
                 os.remove(session_file)
 
         try:
-            options = Options()
-            if headless:
-                options.add_argument("--headless")
-            
-            self.driver = webdriver.Chrome(
-                service=Service(ChromeDriverManager().install()),
-                options=options
-            )
+            if browser_name == "chrome":
+                options = ChromeOptions()
+                if headless:
+                    options.add_argument("--headless")
+                self.driver = webdriver.Chrome(
+                    service=ChromeService(ChromeDriverManager().install()),
+                    options=options
+                )
+            elif browser_name == "firefox":
+                options = FirefoxOptions()
+                if headless:
+                    options.add_argument("--headless")
+                self.driver = webdriver.Firefox(
+                    service=FirefoxService(GeckoDriverManager().install()),
+                    options=options
+                )
+            elif browser_name == "edge":
+                options = EdgeOptions()
+                if headless:
+                    options.add_argument("--headless")
+                self.driver = webdriver.Edge(
+                    service=EdgeService(EdgeChromiumDriverManager().install()),
+                    options=options
+                )
+            else:
+                print(f"Browser '{browser_name}' is not supported.")
+                return None
 
             session_data = {
                 "session_id": self.driver.session_id,
-                "url": self.driver.command_executor._url
+                "url": self.driver.command_executor._url,
+                "browser": browser_name
             }
 
             with open(session_file, "w") as f:
                 json.dump(session_data, f)
             
-            print(f"Aria session started with ID: {self.driver.session_id}")
+            print(f"Aria session started with ID: {self.driver.session_id} using {browser_name}")
             return self.driver
         except WebDriverException as e:
             print(f"Error starting browser session: {e}")
@@ -65,9 +98,21 @@ class AriaNavigator:
             with open(session_file, "r") as f:
                 session_data = json.load(f)
 
+            browser_name = session_data.get("browser", "chrome")
+            
+            if browser_name == "chrome":
+                options = ChromeOptions()
+            elif browser_name == "firefox":
+                options = FirefoxOptions()
+            elif browser_name == "edge":
+                options = EdgeOptions()
+            else:
+                # Should not happen if session file is valid
+                return None
+
             driver = webdriver.Remote(
                 command_executor=session_data["url"],
-                options=Options()
+                options=options
             )
             driver.session_id = session_data["session_id"]
             _ = driver.current_url
