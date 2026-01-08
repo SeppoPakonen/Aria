@@ -1,0 +1,13 @@
+## Progress Tracker
+
+This file tracks the completed and upcoming tasks in the project plan. It should be updated instead of modifying the plan files directly unless a revision to the plan itself is necessary.
+
+### Last Completed Task
+- **Track**: 01-implement-underlying-framework-and-mvp
+- **Phase**: 02-browser-lifecycle
+- **Task**: 01-webdriver-integration
+
+### Next Task to Implement
+- **Track**: 01-implement-underlying-framework-and-mvp
+- **Phase**: 02-browser-lifecycle
+- **Task**: 02-implement-aria-open-basic
