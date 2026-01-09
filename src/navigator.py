@@ -27,19 +27,21 @@ import time
 
 logger = get_logger("navigator")
 
-def retry_on_browser_error(retries=2, delay=1):
+def retry_on_browser_error(retries=3, initial_delay=1, backoff_factor=2):
     def decorator(func):
         def wrapper(*args, **kwargs):
             from selenium.common.exceptions import WebDriverException
             last_exception = None
+            current_delay = initial_delay
             for i in range(retries):
                 try:
                     return func(*args, **kwargs)
                 except (WebDriverException, BrowserError) as e:
                     last_exception = e
                     if i < retries - 1:
-                        logger.warning(f"Browser operation failed (attempt {i+1}/{retries}). Retrying in {delay}s... Error: {e}")
-                        time.sleep(delay)
+                        logger.warning(f"Browser operation failed (attempt {i+1}/{retries}). Retrying in {current_delay}s... Error: {e}")
+                        time.sleep(current_delay)
+                        current_delay *= backoff_factor
                     else:
                         logger.error(f"Browser operation failed after {retries} attempts.")
             raise last_exception
@@ -238,6 +240,24 @@ class AriaNavigator:
             print(f"Error starting {browser_name} session: {e}")
             return None
 
+    def _is_process_running(self, pid):
+        """Checks if a process with the given PID is still running."""
+        if not pid:
+            return True
+        if os.name == 'nt':
+            import subprocess
+            try:
+                output = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], capture_output=True, text=True).stdout
+                return str(pid) in output
+            except:
+                return True
+        else:
+            try:
+                os.kill(pid, 0)
+                return True
+            except OSError:
+                return False
+
     def connect_to_session(self, browser_name=None):
         if not browser_name:
             browser_name = self._get_current_browser()
@@ -252,6 +272,14 @@ class AriaNavigator:
 
         session_data = self._load_session_data(browser_name)
         if not session_data:
+            return None
+        
+        # Optimization: Check if process is still running
+        if not self._is_process_running(session_data.get("driver_pid")):
+            logger.warning(f"Driver process for {browser_name} is no longer running.")
+            session_file = self.get_session_file_path(browser_name)
+            if os.path.exists(session_file):
+                os.remove(session_file)
             return None
 
         try:
@@ -344,7 +372,7 @@ class AriaNavigator:
         
         print(f"Aria session for {browser_name} closed.")
 
-    @retry_on_browser_error(retries=2, delay=1)
+    @retry_on_browser_error(retries=2, initial_delay=1)
     def navigate(self, url):
         if not self.driver:
             self.driver = self.connect_to_session()
@@ -437,7 +465,7 @@ class AriaNavigator:
             logger.error(f"Error going to tab: {e}")
             return False
 
-    @retry_on_browser_error(retries=2, delay=1)
+    @retry_on_browser_error(retries=2, initial_delay=1)
     def get_page_content(self):
         if not self.driver:
             self.driver = self.connect_to_session()

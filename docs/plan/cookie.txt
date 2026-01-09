@@ -4,10 +4,10 @@ This file tracks the completed and upcoming tasks in the project plan. It should
 
 ### Last Completed Task
 - **Track**: 03-implement-advanced-features
-- **Phase**: 01-advanced-workflow-patterns
-- **Task**: 03-create-advanced-recipes
+- **Phase**: 02-resilience-robustness
+- **Task**: 03-session-persistence-recovery
 
 ### Next Task to Implement
 - **Track**: 03-implement-advanced-features
-- **Phase**: 02-resilience-robustness
-- **Task**: 01-design-resilience-patterns
+- **Phase**: 03-deep-diagnostics-monitoring
+- **Task**: 01-enhance-logging-structured-data
