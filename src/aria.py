@@ -6,6 +6,7 @@ from navigator import AriaNavigator
 from script_manager import ScriptManager
 from safety_manager import SafetyManager
 from logger import setup_logging, get_logger
+from report_manager import ReportManager
 
 logger = get_logger("aria")
 
@@ -82,10 +83,10 @@ def main():
     # Pre-process sys.argv for 'page' command to support 'aria page <id> <cmd>'
     import sys
     if len(sys.argv) > 2 and sys.argv[1] == 'page':
-        if sys.argv[2] not in ['new', 'list', 'goto', 'summarize', '-h', '--help']:
+        if sys.argv[2] not in ['new', 'list', 'goto', 'summarize', 'tag', 'export', '-h', '--help']:
             # Assume sys.argv[2] is an identifier
-            # If sys.argv[3] is 'goto' or 'summarize', swap them
-            if len(sys.argv) > 3 and sys.argv[3] in ['goto', 'summarize']:
+            # If sys.argv[3] is 'goto', 'summarize', 'tag', or 'export', swap them
+            if len(sys.argv) > 3 and sys.argv[3] in ['goto', 'summarize', 'tag', 'export']:
                 ident = sys.argv.pop(2)
                 sys.argv.insert(3, ident)
 
@@ -141,10 +142,15 @@ def main():
     parser_page_summarize.add_argument('identifier', type=str, nargs='?', help='The index (0-based), ID or title of the page.')
     parser_page_summarize.add_argument('prompt', type=str, nargs='?', help='Specific instructions for summarization.')
     parser_page_summarize.add_argument('--format', type=str, choices=['text', 'json', 'markdown'], default='text', help='Output format for the summary.')
+    parser_page_summarize.add_argument('--report', action='store_true', help='Generate a local report file for the summary.')
 
     parser_page_tag = page_subparsers.add_parser('tag', help='Tag a page.')
     parser_page_tag.add_argument('identifier', type=str, help='The index, ID or title of the page.')
     parser_page_tag.add_argument('tag', type=str, help='The tag to add.')
+
+    parser_page_export = page_subparsers.add_parser('export', help='Export page content to a Markdown file.')
+    parser_page_export.add_argument('identifier', type=str, nargs='?', help='The index, ID or title of the page.')
+    parser_page_export.add_argument('--path', type=str, help='Optional path to save the report.')
 
     # Define the 'script' command
     parser_script = subparsers.add_parser('script', help='Manage automation scripts.')
@@ -169,6 +175,16 @@ def main():
     
     parser_script_run = script_subparsers.add_parser('run', help='Run a script.')
     parser_script_run.add_argument('identifier', type=str, help='The ID or name of the script to run.')
+
+    # Define the 'report' command
+    parser_report = subparsers.add_parser('report', help='Manage local reports.')
+    report_subparsers = parser_report.add_subparsers(dest="report_command", required=True)
+    
+    parser_report_generate = report_subparsers.add_parser('generate', help='Generate a report from a prompt.')
+    parser_report_generate.add_argument('prompt', type=str, help='The prompt to generate report content.')
+    parser_report_generate.add_argument('--title', type=str, help='Title for the report.')
+    
+    report_subparsers.add_parser('list', help='List all generated reports.')
 
     # Define the 'diag' command
     subparsers.add_parser('diag', help='Show diagnostic information.')
@@ -200,6 +216,7 @@ def main():
     navigator = AriaNavigator()
     script_manager = ScriptManager()
     safety_manager = SafetyManager()
+    report_manager = ReportManager()
 
     if args.command == 'open':
         safety_manager.ensure_disclaimer_accepted()
@@ -286,6 +303,37 @@ def main():
             if not navigator.tag_tab(args.identifier, args.tag):
                 print(f"Error: Could not tag page '{args.identifier}'.")
 
+        elif args.page_command == 'export':
+            if args.identifier:
+                identifier = args.identifier
+                try:
+                    identifier = int(identifier)
+                except ValueError:
+                    pass
+                if not navigator.goto_tab(identifier):
+                    print(f"Error: Could not switch to page '{identifier}'.")
+                    return
+
+            content = navigator.get_page_content()
+            if content:
+                url = navigator.get_current_url()
+                title = navigator._driver.title if navigator._driver else "Exported Page"
+                reports_dir = os.path.dirname(args.path) if args.path else None
+                
+                # If path is provided, we might want to override the default reports dir
+                # For now, let's just use ReportManager but maybe allow custom path
+                if args.path:
+                    # Simple direct write if path is absolute or we want to bypass ReportManager's naming
+                    with open(args.path, "w", encoding="utf-8") as f:
+                        f.write(f"# {title}\n\n**Source:** {url}\n\n{content}")
+                    path = args.path
+                else:
+                    path = report_manager.generate_markdown_report(title, content, sources=[url])
+                
+                print(f"Page exported to: {path}")
+            else:
+                print("Could not retrieve content from the page.")
+
         elif args.page_command == 'summarize':
             # Check for cross-tab synthesis in the prompt
             if args.prompt:
@@ -294,6 +342,9 @@ def main():
                     print("Synthesizing information across tabs for summary...")
                     result = generate_ai_response(refined_prompt, context, output_format=args.format)
                     print(result)
+                    if args.report:
+                        path = report_manager.generate_markdown_report("Summary Report", result, sources=navigator.list_active_browsers())
+                        print(f"Report generated: {path}")
                     return
 
             if args.identifier:
@@ -311,6 +362,9 @@ def main():
                 prompt = args.prompt or "Summarize the following text:"
                 summary = summarize_text(f"{prompt}\n\n{content}", output_format=args.format)
                 print(summary)
+                if args.report:
+                    path = report_manager.generate_markdown_report("Page Summary", summary, sources=[navigator.get_current_url()])
+                    print(f"Report generated: {path}")
             else:
                 print("Could not retrieve content from the page.")
     elif args.command == 'script':
@@ -350,6 +404,27 @@ def main():
         elif args.script_command == 'run':
             safety_manager.ensure_disclaimer_accepted()
             script_manager.run_script(args.identifier, navigator=navigator)
+    elif args.command == 'report':
+        if args.report_command == 'generate':
+            refined_prompt, context = resolve_prompt_and_get_content(args.prompt, navigator)
+            print("Generating report content...")
+            result = generate_ai_response(refined_prompt, context)
+            title = args.title or "General Report"
+            path = report_manager.generate_markdown_report(title, result, sources=navigator.list_active_browsers())
+            print(f"Report generated: {path}")
+        elif args.report_command == 'list':
+            import os
+            reports_dir = report_manager.reports_dir
+            if os.path.exists(reports_dir):
+                files = [f for f in os.listdir(reports_dir) if f.endswith(".md")]
+                if files:
+                    print("Available Reports:")
+                    for f in sorted(files, reverse=True):
+                        print(f"- {f}")
+                else:
+                    print("No reports found.")
+            else:
+                print("No reports found.")
     elif args.command == 'diag':
         import sys
         import platform
