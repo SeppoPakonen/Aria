@@ -39,11 +39,27 @@ def retry_on_browser_error(retries=3, initial_delay=1, backoff_factor=2):
                 except (WebDriverException, BrowserError) as e:
                     last_exception = e
                     if i < retries - 1:
-                        logger.warning(f"Browser operation failed (attempt {i+1}/{retries}). Retrying in {current_delay}s... Error: {e}")
+                        logger.warning(
+                            f"Browser operation failed (attempt {i+1}/{retries}). Retrying in {current_delay}s...",
+                            extra={
+                                "attempt": i + 1,
+                                "max_retries": retries,
+                                "delay": current_delay,
+                                "error": str(e),
+                                "function": func.__name__
+                            }
+                        )
                         time.sleep(current_delay)
                         current_delay *= backoff_factor
                     else:
-                        logger.error(f"Browser operation failed after {retries} attempts.")
+                        logger.error(
+                            f"Browser operation failed after {retries} attempts.",
+                            extra={
+                                "max_retries": retries,
+                                "error": str(e),
+                                "function": func.__name__
+                            }
+                        )
             raise last_exception
         return wrapper
     return decorator
@@ -169,7 +185,10 @@ class AriaNavigator:
         return None
 
     def start_session(self, browser_name="chrome", headless=False, force=False):
-        logger.info(f"Starting browser session: {browser_name} (headless={headless}, force={force})")
+        logger.info(
+            f"Starting browser session: {browser_name}",
+            extra={"browser": browser_name, "headless": headless, "force": force}
+        )
         session_file = self.get_session_file_path(browser_name)
         
         if os.path.exists(session_file):
@@ -233,6 +252,10 @@ class AriaNavigator:
             }
 
             self._save_session(browser_name, session_data)
+            logger.info(
+                f"Aria session started for {browser_name}",
+                extra={"session_id": self.driver.session_id, "driver_pid": proc.pid, "browser": browser_name}
+            )
             
             print(f"Aria session started for {browser_name}")
             return self.driver
@@ -276,7 +299,10 @@ class AriaNavigator:
         
         # Optimization: Check if process is still running
         if not self._is_process_running(session_data.get("driver_pid")):
-            logger.warning(f"Driver process for {browser_name} is no longer running.")
+            logger.warning(
+                f"Driver process for {browser_name} is no longer running.",
+                extra={"browser": browser_name, "driver_pid": session_data.get("driver_pid")}
+            )
             session_file = self.get_session_file_path(browser_name)
             if os.path.exists(session_file):
                 os.remove(session_file)
@@ -300,6 +326,10 @@ class AriaNavigator:
             # Verify it works
             _ = driver.current_url
             self.driver = driver
+            logger.info(
+                f"Successfully reconnected to {browser_name} session.",
+                extra={"browser": browser_name, "session_id": session_data["session_id"]}
+            )
             # Update current browser
             with open(self.get_session_file_path(), "w") as f:
                 json.dump({"browser": browser_name}, f)
@@ -382,13 +412,13 @@ class AriaNavigator:
 
         try:
             print(f"Navigating to: {url}")
-            logger.info(f"Navigating to URL: {url}")
+            logger.info(f"Navigating to URL: {url}", extra={"url": url})
             self.driver.get(url)
         except WebDriverException as e:
-            logger.error(f"WebDriverException during navigation to {url}: {e}")
+            logger.error(f"WebDriverException during navigation to {url}: {e}", extra={"url": url, "error": str(e)})
             raise NavigationError(f"Failed to navigate to {url}: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error during navigation to {url}: {e}")
+            logger.error(f"Unexpected error during navigation to {url}: {e}", extra={"url": url, "error": str(e)})
             raise BrowserError(f"An unexpected error occurred during navigation: {e}")
 
     def navigate_with_prompt(self, prompt):

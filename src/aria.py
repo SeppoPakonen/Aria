@@ -2,6 +2,7 @@ import argparse
 import os
 import google.generativeai as genai
 import re
+import logging
 from navigator import AriaNavigator
 from script_manager import ScriptManager
 from safety_manager import SafetyManager
@@ -63,8 +64,6 @@ def main():
         logger.error(f"Unexpected error: {e}", exc_info=True)
 
 def _run_cli():
-    setup_logging()
-    
     # Pre-process sys.argv for 'page' command to support 'aria page <id> <cmd>'
     import sys
     if len(sys.argv) > 2 and sys.argv[1] == 'page':
@@ -90,6 +89,8 @@ def _run_cli():
                 sys.argv.insert(3, ident)
 
     parser = argparse.ArgumentParser(description="Aria CLI - Your web automation assistant.")
+    parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help='Set the logging level.')
+    parser.add_argument('--json-logs', action='store_true', help='Use JSON format for file logging.')
     
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -191,7 +192,12 @@ def _run_cli():
     subparsers.add_parser('version', help='Show version information.')
 
     args = parser.parse_args()
-    logger.info(f"Command received: {args.command}")
+    
+    # Configure logging based on args
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
+    setup_logging(level=log_level, json_format=args.json_logs)
+    
+    logger.info(f"Command received: {args.command}", extra={"command": args.command, "arguments": vars(args)})
 
     # Auto-detect format from prompt for certain commands
     if args.command == 'page' and args.page_command in ['new', 'summarize']:
