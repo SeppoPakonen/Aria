@@ -72,5 +72,22 @@ class TestAriaReport(unittest.TestCase):
                 self.assertIn("Page exported to: /path/to/export.md", output)
                 mock_rm_inst.generate_markdown_report.assert_called_once()
 
+    @patch('aria.AriaNavigator')
+    @patch('aria.ReportManager')
+    @patch('aria.generate_ai_response')
+    def test_report_generate_html_command(self, mock_ai, mock_report_manager, mock_nav):
+        # Mocking
+        mock_ai.return_value = "AI generated HTML content."
+        mock_rm_inst = mock_report_manager.return_value
+        mock_rm_inst.generate_html_report.return_value = "/path/to/report.html"
+        
+        # Test command: aria report generate "Some prompt" --format html
+        with patch('sys.argv', ['aria', 'report', 'generate', 'Some prompt', '--format', 'html']):
+            with patch('sys.stdout', new=StringIO()) as fake_out:
+                main()
+                output = fake_out.getvalue()
+                self.assertIn("Report generated: /path/to/report.html", output)
+                mock_rm_inst.generate_html_report.assert_called_once()
+
 if __name__ == "__main__":
     unittest.main()

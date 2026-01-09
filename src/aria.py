@@ -7,6 +7,7 @@ from script_manager import ScriptManager
 from safety_manager import SafetyManager
 from logger import setup_logging, get_logger
 from report_manager import ReportManager
+from exceptions import AriaError
 
 logger = get_logger("aria")
 
@@ -78,6 +79,16 @@ def resolve_prompt_and_get_content(prompt: str, navigator: AriaNavigator):
     return prompt, context
 
 def main():
+    try:
+        _run_cli()
+    except AriaError as e:
+        print(f"Error: {e}")
+        logger.error(f"AriaError: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+
+def _run_cli():
     setup_logging()
     
     # Pre-process sys.argv for 'page' command to support 'aria page <id> <cmd>'
@@ -143,14 +154,16 @@ def main():
     parser_page_summarize.add_argument('prompt', type=str, nargs='?', help='Specific instructions for summarization.')
     parser_page_summarize.add_argument('--format', type=str, choices=['text', 'json', 'markdown'], default='text', help='Output format for the summary.')
     parser_page_summarize.add_argument('--report', action='store_true', help='Generate a local report file for the summary.')
+    parser_page_summarize.add_argument('--report-format', type=str, choices=['markdown', 'html'], default='markdown', help='Format of the generated report.')
 
     parser_page_tag = page_subparsers.add_parser('tag', help='Tag a page.')
     parser_page_tag.add_argument('identifier', type=str, help='The index, ID or title of the page.')
     parser_page_tag.add_argument('tag', type=str, help='The tag to add.')
 
-    parser_page_export = page_subparsers.add_parser('export', help='Export page content to a Markdown file.')
+    parser_page_export = page_subparsers.add_parser('export', help='Export page content to a file.')
     parser_page_export.add_argument('identifier', type=str, nargs='?', help='The index, ID or title of the page.')
     parser_page_export.add_argument('--path', type=str, help='Optional path to save the report.')
+    parser_page_export.add_argument('--format', type=str, choices=['markdown', 'html'], default='markdown', help='Format of the exported file.')
 
     # Define the 'script' command
     parser_script = subparsers.add_parser('script', help='Manage automation scripts.')
@@ -175,6 +188,7 @@ def main():
     
     parser_script_run = script_subparsers.add_parser('run', help='Run a script.')
     parser_script_run.add_argument('identifier', type=str, help='The ID or name of the script to run.')
+    parser_script_run.add_argument('--param', action='append', help='Parameters for the script in name=value format.')
 
     # Define the 'report' command
     parser_report = subparsers.add_parser('report', help='Manage local reports.')
@@ -183,6 +197,7 @@ def main():
     parser_report_generate = report_subparsers.add_parser('generate', help='Generate a report from a prompt.')
     parser_report_generate.add_argument('prompt', type=str, help='The prompt to generate report content.')
     parser_report_generate.add_argument('--title', type=str, help='Title for the report.')
+    parser_report_generate.add_argument('--format', type=str, choices=['markdown', 'html'], default='markdown', help='Format of the generated report.')
     
     report_subparsers.add_parser('list', help='List all generated reports.')
 
@@ -323,12 +338,19 @@ def main():
                 # If path is provided, we might want to override the default reports dir
                 # For now, let's just use ReportManager but maybe allow custom path
                 if args.path:
-                    # Simple direct write if path is absolute or we want to bypass ReportManager's naming
+                    # If path is provided, we use the specified path and extension
                     with open(args.path, "w", encoding="utf-8") as f:
-                        f.write(f"# {title}\n\n**Source:** {url}\n\n{content}")
+                        if args.path.endswith(".html"):
+                            # Minimal HTML if direct path is used but it's .html
+                            f.write(f"<html><body><h1>{title}</h1><p>Source: {url}</p><pre>{content}</pre></body></html>")
+                        else:
+                            f.write(f"# {title}\n\n**Source:** {url}\n\n{content}")
                     path = args.path
                 else:
-                    path = report_manager.generate_markdown_report(title, content, sources=[url])
+                    if args.format == 'html':
+                        path = report_manager.generate_html_report(title, content, sources=[url])
+                    else:
+                        path = report_manager.generate_markdown_report(title, content, sources=[url])
                 
                 print(f"Page exported to: {path}")
             else:
@@ -343,7 +365,10 @@ def main():
                     result = generate_ai_response(refined_prompt, context, output_format=args.format)
                     print(result)
                     if args.report:
-                        path = report_manager.generate_markdown_report("Summary Report", result, sources=navigator.list_active_browsers())
+                        if args.report_format == 'html':
+                            path = report_manager.generate_html_report("Summary Report", result, sources=navigator.list_active_browsers())
+                        else:
+                            path = report_manager.generate_markdown_report("Summary Report", result, sources=navigator.list_active_browsers())
                         print(f"Report generated: {path}")
                     return
 
@@ -363,7 +388,10 @@ def main():
                 summary = summarize_text(f"{prompt}\n\n{content}", output_format=args.format)
                 print(summary)
                 if args.report:
-                    path = report_manager.generate_markdown_report("Page Summary", summary, sources=[navigator.get_current_url()])
+                    if args.report_format == 'html':
+                        path = report_manager.generate_html_report("Page Summary", summary, sources=[navigator.get_current_url()])
+                    else:
+                        path = report_manager.generate_markdown_report("Page Summary", summary, sources=[navigator.get_current_url()])
                     print(f"Report generated: {path}")
             else:
                 print("Could not retrieve content from the page.")
@@ -403,20 +431,29 @@ def main():
                 print(f"Error: Script '{args.identifier}' not found or could not be removed.")
         elif args.script_command == 'run':
             safety_manager.ensure_disclaimer_accepted()
-            script_manager.run_script(args.identifier, navigator=navigator)
+            params = {}
+            if args.param:
+                for p in args.param:
+                    if '=' in p:
+                        k, v = p.split('=', 1)
+                        params[k] = v
+            script_manager.run_script(args.identifier, navigator=navigator, parameters=params)
     elif args.command == 'report':
         if args.report_command == 'generate':
             refined_prompt, context = resolve_prompt_and_get_content(args.prompt, navigator)
             print("Generating report content...")
             result = generate_ai_response(refined_prompt, context)
             title = args.title or "General Report"
-            path = report_manager.generate_markdown_report(title, result, sources=navigator.list_active_browsers())
+            if args.format == 'html':
+                path = report_manager.generate_html_report(title, result, sources=navigator.list_active_browsers())
+            else:
+                path = report_manager.generate_markdown_report(title, result, sources=navigator.list_active_browsers())
             print(f"Report generated: {path}")
         elif args.report_command == 'list':
             import os
             reports_dir = report_manager.reports_dir
             if os.path.exists(reports_dir):
-                files = [f for f in os.listdir(reports_dir) if f.endswith(".md")]
+                files = [f for f in os.listdir(reports_dir) if f.endswith((".md", ".html"))]
                 if files:
                     print("Available Reports:")
                     for f in sorted(files, reverse=True):

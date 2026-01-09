@@ -1,6 +1,6 @@
 # 20-scripts.md
 
-`aria` allows you to define and manage reusable scripts. These scripts are essentially saved prompts or sequences of actions that `aria` can execute. This runbook covers the lifecycle of `aria` scripts.
+`aria` allows you to define and manage reusable scripts. These scripts are essentially saved prompts or sequences of actions that `aria` can execute. This runbook covers the lifecycle of `aria` scripts and how to make them dynamic using parameters.
 
 ## Script Lifecycle: New, List, View, Edit, Remove
 
@@ -54,6 +54,40 @@ Deletes a script by its ID.
 # Linux/macOS & Windows CMD: Remove script with ID 0
 aria script 0 remove
 ```
+
+## Running Scripts and Parameterization
+
+### Basic Run (`aria script run`)
+
+Executes a script by its ID.
+
+```bash
+aria script run 0
+```
+
+### Dynamic Scripts with Parameters
+
+You can make your scripts reusable by using placeholders in the format `{{variable_name}}`.
+
+**Example:**
+1. Create a parameterized script:
+   ```bash
+   aria script new --prompt="Search for {{query}} on {{site}}"
+   ```
+   Assume this is script 2.
+
+2. Run with parameters via CLI:
+   ```bash
+   aria script run 2 --param query="best headphones" --param site="reddit"
+   ```
+
+3. Run interactively:
+   If you don't provide all parameters, `aria` will prompt you for them:
+   ```bash
+   aria script run 2
+   # Aria: Enter value for '{{query}}': 
+   # Aria: Enter value for '{{site}}': 
+   ```
 
 ## Iteratively Refine a Script with Edits
 

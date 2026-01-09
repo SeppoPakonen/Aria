@@ -29,5 +29,22 @@ class TestReportManager(unittest.TestCase):
             self.assertIn("## Content", text)
             self.assertIn("This is a test summary.", text)
 
+    def test_generate_html_report(self):
+        title = "Test HTML Report"
+        content = "This is a test summary for HTML."
+        sources = ["https://example.com"]
+        
+        report_path = self.report_manager.generate_html_report(title, content, sources)
+        
+        self.assertTrue(os.path.exists(report_path))
+        self.assertTrue(report_path.endswith(".html"))
+        with open(report_path, "r", encoding="utf-8") as f:
+            text = f.read()
+            self.assertIn("<title>Test HTML Report</title>", text)
+            self.assertIn("<h1>Test HTML Report</h1>", text)
+            self.assertIn("<li>https://example.com</li>", text)
+            self.assertIn("This is a test summary for HTML.", text)
+            self.assertIn("class=\"content\"", text)
+
 if __name__ == "__main__":
     unittest.main()

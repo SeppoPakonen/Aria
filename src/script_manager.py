@@ -1,6 +1,7 @@
 import os
 import json
 from logger import get_logger
+from exceptions import ScriptError
 
 logger = get_logger("script_manager")
 
@@ -115,20 +116,48 @@ class ScriptManager:
             return True
         return False
 
-    def run_script(self, identifier: str, navigator=None) -> bool:
+    def run_script(self, identifier: str, navigator=None, parameters=None) -> bool:
         """Executes a script."""
         script = self.get_script(identifier)
         if not script:
-            print(f"Error: Script '{identifier}' not found.")
-            return False
+            raise ScriptError(f"Script '{identifier}' not found.")
         
-        print(f"Running script {script['id']}: {script['prompt']}")
+        prompt = script['prompt']
+        placeholders = self.get_script_placeholders(prompt)
+        
+        if placeholders:
+            if parameters is None:
+                parameters = {}
+            
+            # Use provided parameters and prompt for missing ones
+            for placeholder in placeholders:
+                if placeholder not in parameters:
+                    val = input(f"Enter value for '{{{{{placeholder}}}}}': ")
+                    parameters[placeholder] = val
+            
+            prompt = self.apply_parameters(prompt, parameters)
+
+        print(f"Running script {script['id']}: {prompt}")
         
         if script["type"] == "prompt":
             if navigator:
-                navigator.navigate_with_prompt(script["prompt"])
+                navigator.navigate_with_prompt(prompt)
                 return True
             else:
-                print("Error: Navigator not provided to run prompt script.")
-                return False
+                raise ScriptError("Navigator not provided to run prompt script.")
         return False
+
+    def get_script_placeholders(self, prompt: str) -> list[str]:
+        """Returns a list of unique placeholders in the format {{name}} found in the prompt."""
+        import re
+        matches = re.findall(r"\{\{([a-zA-Z0-9_-]+)\}\}", prompt)
+        # Use dict.fromkeys to preserve order and remove duplicates
+        return list(dict.fromkeys(matches))
+
+    def apply_parameters(self, prompt: str, parameters: dict) -> str:
+        """Replaces placeholders in the prompt with provided values."""
+        import re
+        result = prompt
+        for key, value in parameters.items():
+            result = result.replace(f"{{{{{key}}}}}", str(value))
+        return result

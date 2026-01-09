@@ -21,8 +21,29 @@ from selenium.webdriver.edge.options import Options as EdgeOptions
 
 from selenium.webdriver.remote.webdriver import WebDriver
 from logger import get_logger
+from exceptions import BrowserError, SessionError, NavigationError
+import time
 
 logger = get_logger("navigator")
+
+def retry_on_browser_error(retries=2, delay=1):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            from selenium.common.exceptions import WebDriverException
+            last_exception = None
+            for i in range(retries):
+                try:
+                    return func(*args, **kwargs)
+                except (WebDriverException, BrowserError) as e:
+                    last_exception = e
+                    if i < retries - 1:
+                        logger.warning(f"Browser operation failed (attempt {i+1}/{retries}). Retrying in {delay}s... Error: {e}")
+                        time.sleep(delay)
+                    else:
+                        logger.error(f"Browser operation failed after {retries} attempts.")
+            raise last_exception
+        return wrapper
+    return decorator
 
 class ReusableRemote(webdriver.Remote):
     def __init__(self, command_executor, options, session_id):
@@ -322,25 +343,24 @@ class AriaNavigator:
         
         print(f"Aria session for {browser_name} closed.")
 
+    @retry_on_browser_error(retries=2, delay=1)
     def navigate(self, url):
         if not self.driver:
             self.driver = self.connect_to_session()
         
         if not self.driver:
-            print("No active session. Use 'aria open' to start a session.")
-            logger.warning("Attempted navigation without active session.")
-            return
+            raise SessionError("No active session. Use 'aria open' to start a session.")
 
         try:
             print(f"Navigating to: {url}")
             logger.info(f"Navigating to URL: {url}")
             self.driver.get(url)
         except WebDriverException as e:
-            print(f"Error navigating to {url}: {e}")
             logger.error(f"WebDriverException during navigation to {url}: {e}")
+            raise NavigationError(f"Failed to navigate to {url}: {e}")
         except Exception as e:
-            print(f"An unexpected error occurred during navigation: {e}")
             logger.error(f"Unexpected error during navigation to {url}: {e}")
+            raise BrowserError(f"An unexpected error occurred during navigation: {e}")
 
     def navigate_with_prompt(self, prompt):
         """Uses AI to determine where to navigate based on a prompt."""
@@ -416,19 +436,19 @@ class AriaNavigator:
             logger.error(f"Error going to tab: {e}")
             return False
 
+    @retry_on_browser_error(retries=2, delay=1)
     def get_page_content(self):
         if not self.driver:
             self.driver = self.connect_to_session()
         
         if not self.driver:
-            print("No active session. Use 'aria open' to start a session.")
-            return ""
+            raise SessionError("No active session. Use 'aria open' to start a session.")
 
         try:
             return self.driver.find_element(By.TAG_NAME, 'body').text
         except WebDriverException as e:
-            print(f"Error getting page content: {e}")
-            return ""
+            logger.error(f"Error getting page content: {e}")
+            raise BrowserError(f"Could not retrieve content from the page: {e}")
 
     def get_tabs_content(self, identifiers):
         """Retrieves content from multiple tabs.
