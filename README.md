@@ -66,6 +66,19 @@ Aria requires Selenium webdrivers to interface with your browsers.
 choco install selenium-all-drivers
 ```
 
+### 3. Python Dependencies
+Install the required Python packages:
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 📚 Documentation
+- [Packaging Guide](docs/packaging_guide.md): Learn how to package and distribute Aria.
+- [Release Workflow](docs/release_workflow.md): Our process for tagging and releasing new versions.
+- [Runbooks](docs/runbooks/): Detailed user guides for all Aria features.
+
 ---
 
 ## 📈 The Roadmap: From Tool to Ecosystem

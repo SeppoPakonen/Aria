@@ -4,10 +4,10 @@ This file tracks the completed and upcoming tasks in the project plan. It should
 
 ### Last Completed Task
 - **Track**: 02-implement-intermediate-level-features
-- **Phase**: 05-reliability-error-handling
-- **Task**: 03-improve-browser-resilience
+- **Phase**: 06-packaging-release-documentation
+- **Task**: 03-verify-documentation
 
 ### Next Task to Implement
-- **Track**: 02-implement-intermediate-level-features
-- **Phase**: 06-packaging-release-documentation
-- **Task**: 01-document-packaging-process
+- **Track**: 03-implement-advanced-features
+- **Phase**: 01-advanced-workflow-patterns
+- **Task**: 01-design-multi-tab-comparison-patterns
