@@ -20,6 +20,9 @@ class TestAriaReport(unittest.TestCase):
         mock_rm_inst.generate_markdown_report.return_value = "/path/to/report.md"
         mock_rm_inst.reports_dir = "/tmp/reports"
         
+        mock_nav_inst = mock_nav.return_value
+        mock_nav_inst.resolve_prompt.return_value = ("Some prompt", "")
+        
         # Test command: aria report generate "Some prompt" --title "My Title"
         with patch('sys.argv', ['aria', 'report', 'generate', 'Some prompt', '--title', 'My Title']):
             with patch('sys.stdout', new=StringIO()) as fake_out:
@@ -80,6 +83,9 @@ class TestAriaReport(unittest.TestCase):
         mock_ai.return_value = "AI generated HTML content."
         mock_rm_inst = mock_report_manager.return_value
         mock_rm_inst.generate_html_report.return_value = "/path/to/report.html"
+        
+        mock_nav_inst = mock_nav.return_value
+        mock_nav_inst.resolve_prompt.return_value = ("Some prompt", "")
         
         # Test command: aria report generate "Some prompt" --format html
         with patch('sys.argv', ['aria', 'report', 'generate', 'Some prompt', '--format', 'html']):

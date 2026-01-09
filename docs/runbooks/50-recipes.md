@@ -220,4 +220,24 @@ This runbook provides a "cookbook" of end-to-end scenarios, demonstrating how to
 *   **Tips / Variations**:
     *   Specify output format (e.g., "in Markdown format").
 
+### 11. Consolidated Market Intelligence Report
+
+*   **Goal**: Gather data from multiple competitors and generate a professional HTML report comparing their offerings.
+*   **Commands**:
+    ```bash
+    # 1. Open browser
+    aria open chrome
+    # 2. Open competitor pages and tag them
+    aria page new --url="https://competitor-alpha.com/features"
+    aria page 0 tag alpha
+    aria page new --url="https://competitor-beta.com/pricing"
+    aria page 1 tag beta
+    # 3. Use tags in a synthesis prompt to generate an HTML report
+    aria page summarize "Analyze the feature set of tag:alpha and compare it with the pricing strategy of tag:beta. Create a comprehensive market positioning summary." --report --report-format html
+    ```
+*   **Expected Results**: A stylized HTML report is generated in the `.aria/reports` directory, containing the synthesized analysis.
+*   **Tips / Variations**:
+    *   Add more tags (`tag:gamma`, `tag:delta`) for a broader analysis.
+    *   Use `--report-format markdown` if you need to paste the results into a collaborative doc (e.g., Notion, GitHub).
+
 *   **Heuristic caution**: Prompts can be ambiguous; `aria` interprets them to the best of its ability. Tab numbers can change. Local pages are temporary. Always validate results in the browser.

@@ -6,7 +6,8 @@ import os
 # Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 
-from aria import resolve_prompt_and_get_content, generate_ai_response, summarize_text
+from aria import generate_ai_response, summarize_text
+from navigator import AriaNavigator
 
 class TestSynthesis(unittest.TestCase):
     @patch('google.generativeai.GenerativeModel')
@@ -48,7 +49,7 @@ class TestSynthesis(unittest.TestCase):
         ]
         
         prompt = "Compare tab 0 and tab 1"
-        refined_prompt, context = resolve_prompt_and_get_content(prompt, mock_navigator)
+        refined_prompt, context = AriaNavigator.resolve_prompt(mock_navigator, prompt)
         
         self.assertEqual(refined_prompt, prompt)
         self.assertIn("Content from Tab 0", context)
@@ -69,7 +70,7 @@ class TestSynthesis(unittest.TestCase):
         ]
         
         prompt = "Look at tab \"Google Search\" and summarize"
-        refined_prompt, context = resolve_prompt_and_get_content(prompt, mock_navigator)
+        refined_prompt, context = AriaNavigator.resolve_prompt(mock_navigator, prompt)
         
         self.assertIn("Google Content", context)
         mock_navigator.get_tabs_content.assert_called_with(['Google Search'])
@@ -81,7 +82,7 @@ class TestSynthesis(unittest.TestCase):
         ]
         
         prompt = "Look at tab google and summarize"
-        refined_prompt, context = resolve_prompt_and_get_content(prompt, mock_navigator)
+        refined_prompt, context = AriaNavigator.resolve_prompt(mock_navigator, prompt)
         
         self.assertIn("Google Content", context)
         mock_navigator.get_tabs_content.assert_called_with(['google'])
@@ -91,7 +92,7 @@ class TestSynthesis(unittest.TestCase):
         mock_navigator.get_tabs_content.return_value = []
         
         prompt = "Compare tab 0, tab \"My Page\" and tab news."
-        resolve_prompt_and_get_content(prompt, mock_navigator)
+        AriaNavigator.resolve_prompt(mock_navigator, prompt)
         
         call_args = set(mock_navigator.get_tabs_content.call_args[0][0])
         self.assertEqual(call_args, {'0', 'My Page', 'news'})
@@ -104,7 +105,7 @@ class TestSynthesis(unittest.TestCase):
         ]
         
         prompt = "Look at tag:news and summarize"
-        refined_prompt, context = resolve_prompt_and_get_content(prompt, mock_navigator)
+        refined_prompt, context = AriaNavigator.resolve_prompt(mock_navigator, prompt)
         
         self.assertIn("News Content", context)
         mock_navigator.get_tabs_by_tag.assert_called_with('news')
@@ -113,7 +114,7 @@ class TestSynthesis(unittest.TestCase):
     def test_resolve_prompt_no_tabs(self):
         mock_navigator = MagicMock()
         prompt = "Just a regular prompt"
-        refined_prompt, context = resolve_prompt_and_get_content(prompt, mock_navigator)
+        refined_prompt, context = AriaNavigator.resolve_prompt(mock_navigator, prompt)
         
         self.assertEqual(refined_prompt, prompt)
         self.assertEqual(context, "")

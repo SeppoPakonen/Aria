@@ -52,32 +52,6 @@ def summarize_text(text: str, output_format: str = "text") -> str:
         prompt = "Summarize the following text and return it as valid JSON with keys 'summary', 'key_points' (list), and 'overall_sentiment':"
     return generate_ai_response(prompt, text, output_format=output_format)
 
-def resolve_prompt_and_get_content(prompt: str, navigator: AriaNavigator):
-    """Parses prompt for tab references and returns (enhanced_prompt, context)."""
-    # 1. Look for 'tag:NAME'
-    tag_matches = re.findall(r'tag:([^\s,;?!\.]+)', prompt, re.IGNORECASE)
-    tag_identifiers = []
-    for tag in tag_matches:
-        tag_identifiers.extend(navigator.get_tabs_by_tag(tag))
-
-    # 2. Look for 'tab 0', 'tab "My Page"', 'tab google', etc.
-    # Matches 'tab 123' or 'tab "quoted string"' or 'tab unquoted_word'
-    matches = re.findall(r'tab\s+(?:"([^"]+)"|([^\s,;?!\.]+))', prompt, re.IGNORECASE)
-    
-    # Unique identifiers
-    identifiers = list(set(tag_identifiers + [m[0] or m[1] for m in matches]))
-    if not identifiers:
-        return prompt, ""
-
-    contents = navigator.get_tabs_content(identifiers)
-    
-    context_parts = []
-    for item in contents:
-        context_parts.append(f"--- Content from Tab {item['identifier']} (Title: {item['title']}, URL: {item['url']}) ---\n{item['content']}\n")
-    
-    context = "\n".join(context_parts)
-    return prompt, context
-
 def main():
     try:
         _run_cli()
@@ -268,7 +242,7 @@ def _run_cli():
                     print(f"Opened new page and navigated to {url}")
             elif args.prompt:
                 # Check for cross-tab synthesis
-                refined_prompt, context = resolve_prompt_and_get_content(args.prompt, navigator)
+                refined_prompt, context = navigator.resolve_prompt(args.prompt)
                 if context:
                     print("Synthesizing information across tabs...")
                     result = generate_ai_response(refined_prompt, context, output_format=args.format)
@@ -359,7 +333,7 @@ def _run_cli():
         elif args.page_command == 'summarize':
             # Check for cross-tab synthesis in the prompt
             if args.prompt:
-                refined_prompt, context = resolve_prompt_and_get_content(args.prompt, navigator)
+                refined_prompt, context = navigator.resolve_prompt(args.prompt)
                 if context:
                     print("Synthesizing information across tabs for summary...")
                     result = generate_ai_response(refined_prompt, context, output_format=args.format)
@@ -440,7 +414,7 @@ def _run_cli():
             script_manager.run_script(args.identifier, navigator=navigator, parameters=params)
     elif args.command == 'report':
         if args.report_command == 'generate':
-            refined_prompt, context = resolve_prompt_and_get_content(args.prompt, navigator)
+            refined_prompt, context = navigator.resolve_prompt(args.prompt)
             print("Generating report content...")
             result = generate_ai_response(refined_prompt, context)
             title = args.title or "General Report"

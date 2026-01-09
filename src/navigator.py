@@ -1,5 +1,6 @@
 import os
 import json
+import re
 from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
@@ -499,3 +500,32 @@ class AriaNavigator:
             print(f"Error opening new tab: {e}")
             logger.error(f"WebDriverException during new_tab: {e}")
             return False
+
+    def resolve_prompt(self, prompt: str):
+        """Parses prompt for tab and tag references and returns (refined_prompt, context)."""
+        if not self.driver:
+            self.driver = self.connect_to_session()
+
+        # 1. Look for 'tag:NAME'
+        tag_matches = re.findall(r'tag:([^\s,;?!\.]+)', prompt, re.IGNORECASE)
+        tag_identifiers = []
+        for tag in tag_matches:
+            tag_identifiers.extend(self.get_tabs_by_tag(tag))
+
+        # 2. Look for 'tab 0', 'tab "My Page"', 'tab google', etc.
+        matches = re.findall(r'tab\s+(?:"([^"]+)"|([^\s,;?!\.]+))', prompt, re.IGNORECASE)
+        
+        # Unique identifiers
+        identifiers = list(set(tag_identifiers + [m[0] or m[1] for m in matches]))
+        if not identifiers:
+            return prompt, ""
+
+        contents = self.get_tabs_content(identifiers)
+        
+        context_parts = []
+        for item in contents:
+            context_parts.append(f"--- Content from Tab {item['identifier']} (Title: {item['title']}, URL: {item['url']}) ---\n{item['content']}\n")
+        
+        context = "\n".join(context_parts)
+        return prompt, context
+            
