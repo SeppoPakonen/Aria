@@ -1,6 +1,6 @@
 import os
 import json
-from logger import get_logger
+from logger import get_logger, time_it
 from exceptions import ScriptError
 
 logger = get_logger("script_manager")
@@ -116,6 +116,7 @@ class ScriptManager:
             return True
         return False
 
+    @time_it(logger)
     def run_script(self, identifier: str, navigator=None, parameters=None) -> bool:
         """Executes a script."""
         script = self.get_script(identifier)

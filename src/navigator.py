@@ -21,7 +21,7 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 
 from selenium.webdriver.remote.webdriver import WebDriver
-from logger import get_logger
+from logger import get_logger, time_it
 from exceptions import BrowserError, SessionError, NavigationError
 import time
 
@@ -136,6 +136,7 @@ class AriaNavigator:
                 handles.append(handle)
         return handles
 
+    @time_it(logger)
     def list_tabs(self):
         if not self.driver:
             self.driver = self.connect_to_session()
@@ -184,6 +185,7 @@ class AriaNavigator:
                 return json.load(f)
         return None
 
+    @time_it(logger)
     def start_session(self, browser_name="chrome", headless=False, force=False):
         logger.info(
             f"Starting browser session: {browser_name}",
@@ -281,6 +283,7 @@ class AriaNavigator:
             except OSError:
                 return False
 
+    @time_it(logger)
     def connect_to_session(self, browser_name=None):
         if not browser_name:
             browser_name = self._get_current_browser()
@@ -402,6 +405,7 @@ class AriaNavigator:
         
         print(f"Aria session for {browser_name} closed.")
 
+    @time_it(logger)
     @retry_on_browser_error(retries=2, initial_delay=1)
     def navigate(self, url):
         if not self.driver:
@@ -431,6 +435,7 @@ class AriaNavigator:
         self.navigate(search_url)
         print(f"Heuristic: Searching for '{prompt}' on DuckDuckGo.")
 
+    @time_it(logger)
     def goto_tab(self, identifier):
         if not self.driver:
             self.driver = self.connect_to_session()
@@ -495,6 +500,7 @@ class AriaNavigator:
             logger.error(f"Error going to tab: {e}")
             return False
 
+    @time_it(logger)
     @retry_on_browser_error(retries=2, initial_delay=1)
     def get_page_content(self):
         if not self.driver:
