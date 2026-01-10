@@ -29,6 +29,19 @@ class TestReportManager(unittest.TestCase):
             self.assertIn("## Content", text)
             self.assertIn("This is a test summary.", text)
 
+    def test_generate_markdown_report_with_metrics(self):
+        title = "Metrics Report"
+        content = "Report with metrics."
+        metrics = [{"operation": "test_op", "duration_ms": 123.45}]
+        
+        report_path = self.report_manager.generate_markdown_report(title, content, metrics=metrics)
+        
+        self.assertTrue(os.path.exists(report_path))
+        with open(report_path, "r", encoding="utf-8") as f:
+            text = f.read()
+            self.assertIn("## Performance Metrics", text)
+            self.assertIn("| test_op | 123.45 |", text)
+
     def test_generate_html_report(self):
         title = "Test HTML Report"
         content = "This is a test summary for HTML."
@@ -45,6 +58,20 @@ class TestReportManager(unittest.TestCase):
             self.assertIn("<li>https://example.com</li>", text)
             self.assertIn("This is a test summary for HTML.", text)
             self.assertIn("class=\"content\"", text)
+
+    def test_generate_html_report_with_metrics(self):
+        title = "HTML Metrics Report"
+        content = "HTML content with metrics."
+        metrics = [{"operation": "html_op", "duration_ms": 456.78}]
+        
+        report_path = self.report_manager.generate_html_report(title, content, metrics=metrics)
+        
+        self.assertTrue(os.path.exists(report_path))
+        with open(report_path, "r", encoding="utf-8") as f:
+            text = f.read()
+            self.assertIn("<h3>Performance Metrics</h3>", text)
+            self.assertIn("<td>html_op</td>", text)
+            self.assertIn("<td>456.78</td>", text)
 
 if __name__ == "__main__":
     unittest.main()

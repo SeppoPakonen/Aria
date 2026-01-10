@@ -27,6 +27,13 @@ Aria is a web automation tool. By using this software, you agree to the followin
 
 ********************************************************************************
 """
+        self.sensitive_patterns = [
+            r"bank", r"paypal", r"stripe", r"crypto", r"coinbase",
+            r"health", r"medical", r"patient",
+            r"login", r"signin", r"auth", r"password",
+            r"account", r"billing", r"checkout", r"payment",
+            r"mail\.google\.com", r"outlook\.live\.com", r"proton\.me"
+        ]
 
     def _is_disclaimer_accepted(self) -> bool:
         """Checks if the disclaimer has already been accepted."""
@@ -67,6 +74,47 @@ Aria is a web automation tool. By using this software, you agree to the followin
         except KeyboardInterrupt:
             print("\nAborted.")
             sys.exit(1)
+
+    def get_security_best_practices(self) -> str:
+        """Returns a summarized version of security best practices."""
+        return """
+Aria Security Best Practices Summary
+====================================
+
+1. API KEYS: Use environment variables (e.g., GEMINI_API_KEY). Never hardcode secrets.
+2. SENSITIVE SITES: Avoid using Aria on banking, healthcare, or private email sites.
+3. DATA PRIVACY: Be aware that page content is sent to external LLM providers.
+4. SCRIPT SAFETY: Review third-party scripts before running them.
+5. SANDBOXING: Run Aria in a controlled environment for maximum safety.
+
+For full documentation, see: docs/security_best_practices.md
+"""
+
+    def is_sensitive_url(self, url: str) -> bool:
+        """Checks if a URL matches any sensitive patterns."""
+        import re
+        url_lower = url.lower()
+        for pattern in self.sensitive_patterns:
+            if re.search(pattern, url_lower):
+                return True
+        return False
+
+    def check_url_safety(self, url: str, force: bool = False) -> bool:
+        """
+        Checks URL safety and prompts user if sensitive.
+        Returns True if safe to proceed, False otherwise.
+        """
+        if not self.is_sensitive_url(url):
+            return True
+
+        print(f"\n[WARNING] The URL '{url}' appears to be a sensitive site.")
+        print("Automating interactions with banking, login, or private data sites is risky.")
+        
+        if force:
+            print("Proceeding due to --force flag.")
+            return True
+
+        return self.confirm("Do you want to proceed anyway?", default=False)
 
     @staticmethod
     def confirm(message: str, default: bool = False) -> bool:

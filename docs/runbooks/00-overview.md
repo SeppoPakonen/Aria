@@ -66,6 +66,7 @@ This quickstart demonstrates a basic `aria` workflow: opening a browser, creatin
 
 ## Further Reading
 
+*   [Security Best Practices](../security_best_practices.md): Essential guidelines for safe operation.
 *   [10-pages.md](10-pages.md): Detailed usage of `aria page` commands.
 *   [20-scripts.md](20-scripts.md): Managing and refining automation scripts.
 *   [30-browsers.md](30-browsers.md): Controlling browser instances and hybrid workflows.

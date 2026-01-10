@@ -80,6 +80,22 @@ class ReusableRemote(webdriver.Remote):
 class AriaNavigator:
     def __init__(self):
         self.driver: WebDriver | None = None
+        self.throttle_delay = float(os.environ.get("ARIA_THROTTLE_DELAY", 0.0))
+        self.randomize_delay = os.environ.get("ARIA_RANDOMIZE_DELAY", "true").lower() == "true"
+        self.plugin_manager = None
+
+    def throttle(self):
+        """Introduces a delay based on throttle settings."""
+        if self.throttle_delay > 0:
+            import time
+            import random
+            delay = self.throttle_delay
+            if self.randomize_delay:
+                # Randomize +/- 20%
+                delay = delay * random.uniform(0.8, 1.2)
+            
+            logger.info(f"Throttling for {delay:.2f}s", extra={"delay": delay})
+            time.sleep(delay)
 
     def get_session_file_path(self, browser_name=None):
         temp_dir = os.path.join(os.path.expanduser("~"), ".aria")
@@ -408,20 +424,32 @@ class AriaNavigator:
     @time_it(logger)
     @retry_on_browser_error(retries=2, initial_delay=1)
     def navigate(self, url):
+        self.throttle()
+        if self.plugin_manager:
+            self.plugin_manager.trigger_hook("pre_navigation", url=url)
+
         if not self.driver:
             self.driver = self.connect_to_session()
         
         if not self.driver:
+            if self.plugin_manager:
+                self.plugin_manager.trigger_hook("post_navigation", url=url, success=False)
             raise SessionError("No active session. Use 'aria open' to start a session.")
 
         try:
             print(f"Navigating to: {url}")
             logger.info(f"Navigating to URL: {url}", extra={"url": url})
             self.driver.get(url)
+            if self.plugin_manager:
+                self.plugin_manager.trigger_hook("post_navigation", url=url, success=True)
         except WebDriverException as e:
+            if self.plugin_manager:
+                self.plugin_manager.trigger_hook("post_navigation", url=url, success=False)
             logger.error(f"WebDriverException during navigation to {url}: {e}", extra={"url": url, "error": str(e)})
             raise NavigationError(f"Failed to navigate to {url}: {e}")
         except Exception as e:
+            if self.plugin_manager:
+                self.plugin_manager.trigger_hook("post_navigation", url=url, success=False)
             logger.error(f"Unexpected error during navigation to {url}: {e}", extra={"url": url, "error": str(e)})
             raise BrowserError(f"An unexpected error occurred during navigation: {e}")
 
@@ -547,6 +575,7 @@ class AriaNavigator:
         return results
 
     def new_tab(self, url="about:blank"):
+        self.throttle()
         if not self.driver:
             self.driver = self.connect_to_session()
         

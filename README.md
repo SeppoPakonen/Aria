@@ -75,6 +75,7 @@ pip install -r requirements.txt
 ---
 
 ## 📚 Documentation
+- [Security Best Practices](docs/security_best_practices.md): Essential guidelines for safe operation.
 - [Packaging Guide](docs/packaging_guide.md): Learn how to package and distribute Aria.
 - [Release Workflow](docs/release_workflow.md): Our process for tagging and releasing new versions.
 - [Runbooks](docs/runbooks/): Detailed user guides for all Aria features.

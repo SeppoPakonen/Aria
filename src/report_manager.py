@@ -1,5 +1,8 @@
 import os
 from datetime import datetime
+from logger import get_trace_id, time_it, get_logger
+
+logger = get_logger("report_manager")
 
 class ReportManager:
     def __init__(self, reports_dir=None):
@@ -11,23 +14,35 @@ class ReportManager:
         if not os.path.exists(self.reports_dir):
             os.makedirs(self.reports_dir)
 
-    def generate_markdown_report(self, title, content, sources=None):
+    @time_it(logger)
+    def generate_markdown_report(self, title, content, sources=None, metrics=None):
         """
         Generates a basic Markdown report.
         """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         filename_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        trace_id = get_trace_id()
         
         report_lines = [
             f"# {title}",
             f"\n**Generated on:** {timestamp}",
         ]
         
+        if trace_id:
+            report_lines.append(f"**Trace ID:** `{trace_id}`")
+        
         if sources:
             report_lines.append("\n## Sources")
             for source in sources:
                 report_lines.append(f"- {source}")
         
+        if metrics:
+            report_lines.append("\n## Performance Metrics")
+            report_lines.append("| Operation | Duration (ms) |")
+            report_lines.append("| :--- | :--- |")
+            for metric in metrics:
+                report_lines.append(f"| {metric['operation']} | {metric['duration_ms']} |")
+
         report_lines.append("\n## Content")
         report_lines.append(content)
         
@@ -42,13 +57,19 @@ class ReportManager:
         
         return file_path
 
-    def generate_html_report(self, title, content, sources=None):
+    @time_it(logger)
+    def generate_html_report(self, title, content, sources=None, metrics=None):
         """
         Generates a basic HTML report.
         """
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         filename_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        trace_id = get_trace_id()
         
+        trace_id_html = ""
+        if trace_id:
+            trace_id_html = f"<p class='metadata'>Trace ID: <code>{trace_id}</code></p>"
+
         sources_html = ""
         if sources:
             sources_html = "<h3>Sources</h3><ul>"
@@ -56,6 +77,13 @@ class ReportManager:
                 sources_html += f"<li>{source}</li>"
             sources_html += "</ul>"
             
+        metrics_html = ""
+        if metrics:
+            metrics_html = "<h3>Performance Metrics</h3><table><thead><tr><th>Operation</th><th>Duration (ms)</th></tr></thead><tbody>"
+            for metric in metrics:
+                metrics_html += f"<tr><td>{metric['operation']}</td><td>{metric['duration_ms']}</td></tr>"
+            metrics_html += "</tbody></table>"
+
         html_template = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -86,13 +114,23 @@ class ReportManager:
         .metadata {{
             color: #7f8c8d;
             font-size: 0.9em;
-            margin-bottom: 30px;
+            margin-bottom: 5px;
         }}
-        .sources {{
+        .sources, .metrics {{
+            margin-top: 20px;
             margin-bottom: 30px;
             padding: 15px;
             background-color: #ecf0f1;
             border-radius: 4px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+        }}
+        th, td {{
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
         }}
         .content {{
             white-space: pre-wrap;
@@ -107,8 +145,12 @@ class ReportManager:
     <div class="report-container">
         <h1>{title}</h1>
         <p class="metadata">Generated on: {timestamp}</p>
+        {trace_id_html}
         <div class="sources">
             {sources_html}
+        </div>
+        <div class="metrics">
+            {metrics_html}
         </div>
         <div class="content">{content}</div>
     </div>

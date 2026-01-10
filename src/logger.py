@@ -4,6 +4,14 @@ import json
 import datetime
 import time
 import functools
+import uuid
+import contextvars
+
+# Context variable to store the trace ID for the current execution context
+trace_id_var = contextvars.ContextVar("trace_id", default=None)
+
+# Global list to store performance metrics for the current execution
+_performance_metrics = []
 
 class JsonFormatter(logging.Formatter):
     """Custom JSON formatter for structured logging."""
@@ -14,6 +22,12 @@ class JsonFormatter(logging.Formatter):
             "level": record.levelname,
             "message": record.getMessage(),
         }
+        
+        # Add trace_id from context if available
+        trace_id = trace_id_var.get()
+        if trace_id:
+            log_record["trace_id"] = trace_id
+
         if hasattr(record, "extra_context"):
             log_record.update(record.extra_context)
         
@@ -46,13 +60,31 @@ def time_it(logger=None):
             finally:
                 end_time = time.perf_counter()
                 duration_ms = (end_time - start_time) * 1000
+                duration_ms = round(duration_ms, 2)
+                
+                # Store metric
+                _performance_metrics.append({
+                    "operation": func.__name__,
+                    "duration_ms": duration_ms,
+                    "timestamp": datetime.datetime.now().isoformat()
+                })
+                
                 log = logger or logging.getLogger(func.__module__)
                 log.info(
                     f"Performance: {func.__name__} took {duration_ms:.2f}ms",
-                    extra={"duration_ms": round(duration_ms, 2), "operation": func.__name__}
+                    extra={"duration_ms": duration_ms, "operation": func.__name__}
                 )
         return wrapper
     return decorator
+
+def get_performance_metrics():
+    """Returns the collected performance metrics."""
+    return list(_performance_metrics)
+
+def clear_performance_metrics():
+    """Clears the collected performance metrics."""
+    global _performance_metrics
+    _performance_metrics = []
 
 def setup_logging(level=logging.INFO, json_format=False):
     """Sets up the logging configuration for Aria."""
@@ -86,7 +118,7 @@ def setup_logging(level=logging.INFO, json_format=False):
     # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(console_formatter)
-    console_handler.setLevel(logging.WARNING)
+    console_handler.setLevel(level)
     root_logger.addHandler(console_handler)
     
     # Silence third-party loggers
@@ -97,3 +129,14 @@ def setup_logging(level=logging.INFO, json_format=False):
 def get_logger(name):
     """Returns a logger instance for the given name."""
     return logging.getLogger(name)
+
+def set_trace_id(trace_id=None):
+    """Sets the trace ID for the current context. Generates one if not provided."""
+    if trace_id is None:
+        trace_id = str(uuid.uuid4())
+    trace_id_var.set(trace_id)
+    return trace_id
+
+def get_trace_id():
+    """Returns the trace ID for the current context."""
+    return trace_id_var.get()

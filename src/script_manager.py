@@ -132,7 +132,17 @@ class ScriptManager:
             
             # Use provided parameters and prompt for missing ones
             for placeholder in placeholders:
-                if placeholder not in parameters:
+                if placeholder.startswith("env:"):
+                    env_var = placeholder[4:]
+                    val = os.environ.get(env_var)
+                    if val is None:
+                        logger.warning(f"Environment variable '{env_var}' not found for placeholder '{{{{{placeholder}}}}}'.")
+                        if placeholder not in parameters:
+                            val = input(f"Enter value for environment variable '{env_var}': ")
+                            parameters[placeholder] = val
+                    else:
+                        parameters[placeholder] = val
+                elif placeholder not in parameters:
                     val = input(f"Enter value for '{{{{{placeholder}}}}}': ")
                     parameters[placeholder] = val
             
@@ -151,7 +161,7 @@ class ScriptManager:
     def get_script_placeholders(self, prompt: str) -> list[str]:
         """Returns a list of unique placeholders in the format {{name}} found in the prompt."""
         import re
-        matches = re.findall(r"\{\{([a-zA-Z0-9_-]+)\}\}", prompt)
+        matches = re.findall(r"\{\{([a-zA-Z0-9_:-]+)\}\}", prompt)
         # Use dict.fromkeys to preserve order and remove duplicates
         return list(dict.fromkeys(matches))
 

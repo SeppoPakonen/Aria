@@ -6,7 +6,8 @@ import logging
 from navigator import AriaNavigator
 from script_manager import ScriptManager
 from safety_manager import SafetyManager
-from logger import setup_logging, get_logger
+from plugin_manager import PluginManager
+from logger import setup_logging, get_logger, set_trace_id, time_it, get_performance_metrics
 from report_manager import ReportManager
 from exceptions import AriaError
 
@@ -14,11 +15,17 @@ logger = get_logger("aria")
 
 VERSION = "0.1.0"
 
-def generate_ai_response(prompt: str, context: str = "", output_format: str = "text") -> str:
+@time_it(logger)
+def generate_ai_response(prompt: str, context: str = "", output_format: str = "text", plugin_manager: PluginManager = None) -> str:
     """Generates a response from the AI given a prompt and optional context."""
+    if plugin_manager:
+        plugin_manager.trigger_hook("pre_ai_generation", prompt=prompt)
+
+    logger.info(f"Generating AI response. Format: {output_format}", extra={"prompt_length": len(prompt), "context_length": len(context)})
     try:
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
+            logger.error("GEMINI_API_KEY environment variable not set.")
             return "Error: GEMINI_API_KEY environment variable not set."
         
         genai.configure(api_key=api_key)
@@ -36,22 +43,41 @@ def generate_ai_response(prompt: str, context: str = "", output_format: str = "t
         response = model.generate_content(full_prompt)
         text = response.text
         
+        logger.info("AI response generated successfully.", extra={"response_length": len(text)})
+        
         # Simple cleanup if AI includes markdown code blocks
         if output_format == "json" and text.startswith("```json"):
             text = text.replace("```json", "", 1).replace("```", "", 1).strip()
         elif output_format == "json" and text.startswith("```"):
             text = text.replace("```", "", 1).replace("```", "", 1).strip()
             
+        if plugin_manager:
+            plugin_manager.trigger_hook("post_ai_generation", prompt=prompt, response=text)
+
         return text
     except Exception as e:
+        logger.error(f"Error during AI generation: {e}", exc_info=True)
         return f"Error during AI generation: {e}"
 
-def summarize_text(text: str, output_format: str = "text") -> str:
+def summarize_text(text: str, output_format: str = "text", plugin_manager: PluginManager = None) -> str:
     """Summarizes the given text using the Gemini API."""
     prompt = "Summarize the following text:"
     if output_format == "json":
         prompt = "Summarize the following text and return it as valid JSON with keys 'summary', 'key_points' (list), and 'overall_sentiment':"
-    return generate_ai_response(prompt, text, output_format=output_format)
+    return generate_ai_response(prompt, text, output_format=output_format, plugin_manager=plugin_manager)
+
+def safe_navigate(url, navigator, safety_manager, force=False):
+    """Navigates to a URL only if it passes the safety check."""
+    if safety_manager.check_url_safety(url, force=force):
+        navigator.navigate(url)
+        return True
+    return False
+
+def safe_new_tab(url, navigator, safety_manager, force=False):
+    """Opens a new tab with a URL only if it passes the safety check."""
+    if safety_manager.check_url_safety(url, force=force):
+        return navigator.new_tab(url)
+    return False
 
 def main():
     try:
@@ -66,6 +92,26 @@ def main():
 def _run_cli():
     # Pre-process sys.argv for 'page' command to support 'aria page <id> <cmd>'
     import sys
+    
+    # Initialize core managers early to provide context to plugins
+    navigator = AriaNavigator()
+    script_manager = ScriptManager()
+    safety_manager = SafetyManager()
+    report_manager = ReportManager()
+
+    plugin_manager = PluginManager(context={
+        "navigator": navigator,
+        "script_manager": script_manager,
+        "safety_manager": safety_manager,
+        "report_manager": report_manager,
+        "version": VERSION
+    })
+    
+    # Give navigator access to plugin manager for hooks
+    navigator.plugin_manager = plugin_manager
+    
+    plugin_manager.load_plugins()
+
     if len(sys.argv) > 2 and sys.argv[1] == 'page':
         if sys.argv[2] not in ['new', 'list', 'goto', 'summarize', 'tag', 'export', '-h', '--help']:
             # Assume sys.argv[2] is an identifier
@@ -91,6 +137,9 @@ def _run_cli():
     parser = argparse.ArgumentParser(description="Aria CLI - Your web automation assistant.")
     parser.add_argument('--log-level', type=str, default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help='Set the logging level.')
     parser.add_argument('--json-logs', action='store_true', help='Use JSON format for file logging.')
+    parser.add_argument('--trace-id', type=str, help='Optional trace ID for this execution.')
+    parser.add_argument('--force', action='store_true', help='Force actions and bypass safety warnings.')
+    parser.add_argument('--slow-mo', type=float, default=0.0, help='Add a delay in seconds between browser actions.')
     
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -191,13 +240,34 @@ def _run_cli():
     # Define the 'version' command
     subparsers.add_parser('version', help='Show version information.')
 
+    # Define the 'security' command
+    subparsers.add_parser('security', help='Show security best practices.')
+
+    # Add plugin commands
+    plugin_commands = plugin_manager.get_plugin_commands()
+    for cmd_def in plugin_commands:
+        p = subparsers.add_parser(cmd_def['name'], help=cmd_def.get('help'))
+        for arg in cmd_def.get('arguments', []):
+            arg_copy = arg.copy()
+            name = arg_copy.pop('name')
+            p.add_argument(name, **arg_copy)
+        p.set_defaults(func=cmd_def['callback'])
+
     args = parser.parse_args()
+    
+    # Set unique trace ID for this command execution
+    trace_id = set_trace_id(args.trace_id)
     
     # Configure logging based on args
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
     setup_logging(level=log_level, json_format=args.json_logs)
     
     logger.info(f"Command received: {args.command}", extra={"command": args.command, "arguments": vars(args)})
+
+    # Dispatch to plugin command if applicable
+    if hasattr(args, 'func'):
+        args.func(args)
+        return
 
     # Auto-detect format from prompt for certain commands
     if args.command == 'page' and args.page_command in ['new', 'summarize']:
@@ -208,11 +278,9 @@ def _run_cli():
             elif "table" in prompt_text or "markdown" in prompt_text:
                 args.format = "markdown"
 
-    navigator = AriaNavigator()
-    script_manager = ScriptManager()
-    safety_manager = SafetyManager()
-    report_manager = ReportManager()
-
+    if args.slow_mo > 0:
+        navigator.throttle_delay = args.slow_mo
+        
     if args.command == 'open':
         safety_manager.ensure_disclaimer_accepted()
         
@@ -231,7 +299,7 @@ def _run_cli():
         if args.scope == 'web':
             if navigator.start_session(browser_name=browser_to_open, headless=args.headless):
                 if url_to_navigate:
-                    navigator.navigate(url_to_navigate)
+                    safe_navigate(url_to_navigate, navigator, safety_manager, force=args.force)
         else:
             print(f"Scope '{args.scope}' is not yet implemented.")
     elif args.command == 'close':
@@ -244,18 +312,19 @@ def _run_cli():
 
             url = args.url_opt or args.url
             if url:
-                if navigator.new_tab(url):
+                if safe_new_tab(url, navigator, safety_manager, force=args.force):
                     print(f"Opened new page and navigated to {url}")
             elif args.prompt:
                 # Check for cross-tab synthesis
                 refined_prompt, context = navigator.resolve_prompt(args.prompt)
                 if context:
                     print("Synthesizing information across tabs...")
-                    result = generate_ai_response(refined_prompt, context, output_format=args.format)
+                    result = generate_ai_response(refined_prompt, context, output_format=args.format, plugin_manager=plugin_manager)
                     print(result)
                 else:
-                    if navigator.new_tab():
-                        navigator.navigate_with_prompt(args.prompt)
+                    if safety_manager.check_url_safety(args.prompt, force=args.force):
+                        if navigator.new_tab():
+                            navigator.navigate_with_prompt(args.prompt)
             else:
                 # Default to blank new tab if no URL/prompt
                 if navigator.new_tab():
@@ -286,9 +355,10 @@ def _run_cli():
                 return
 
             if args.url:
-                navigator.navigate(args.url)
+                safe_navigate(args.url, navigator, safety_manager, force=args.force)
             elif args.prompt:
-                navigator.navigate_with_prompt(args.prompt)
+                if safety_manager.check_url_safety(args.prompt, force=args.force):
+                    navigator.navigate_with_prompt(args.prompt)
             elif args.identifier:
                 print(f"Switched to page '{args.identifier}'.")
             else:
@@ -327,10 +397,11 @@ def _run_cli():
                             f.write(f"# {title}\n\n**Source:** {url}\n\n{content}")
                     path = args.path
                 else:
+                    metrics = get_performance_metrics()
                     if args.format == 'html':
-                        path = report_manager.generate_html_report(title, content, sources=[url])
+                        path = report_manager.generate_html_report(title, content, sources=[url], metrics=metrics)
                     else:
-                        path = report_manager.generate_markdown_report(title, content, sources=[url])
+                        path = report_manager.generate_markdown_report(title, content, sources=[url], metrics=metrics)
                 
                 print(f"Page exported to: {path}")
             else:
@@ -342,13 +413,14 @@ def _run_cli():
                 refined_prompt, context = navigator.resolve_prompt(args.prompt)
                 if context:
                     print("Synthesizing information across tabs for summary...")
-                    result = generate_ai_response(refined_prompt, context, output_format=args.format)
+                    result = generate_ai_response(refined_prompt, context, output_format=args.format, plugin_manager=plugin_manager)
                     print(result)
                     if args.report:
+                        metrics = get_performance_metrics()
                         if args.report_format == 'html':
-                            path = report_manager.generate_html_report("Summary Report", result, sources=navigator.list_active_browsers())
+                            path = report_manager.generate_html_report("Summary Report", result, sources=navigator.list_active_browsers(), metrics=metrics)
                         else:
-                            path = report_manager.generate_markdown_report("Summary Report", result, sources=navigator.list_active_browsers())
+                            path = report_manager.generate_markdown_report("Summary Report", result, sources=navigator.list_active_browsers(), metrics=metrics)
                         print(f"Report generated: {path}")
                     return
 
@@ -365,13 +437,14 @@ def _run_cli():
             content = navigator.get_page_content()
             if content:
                 prompt = args.prompt or "Summarize the following text:"
-                summary = summarize_text(f"{prompt}\n\n{content}", output_format=args.format)
+                summary = summarize_text(f"{prompt}\n\n{content}", output_format=args.format, plugin_manager=plugin_manager)
                 print(summary)
                 if args.report:
+                    metrics = get_performance_metrics()
                     if args.report_format == 'html':
-                        path = report_manager.generate_html_report("Page Summary", summary, sources=[navigator.get_current_url()])
+                        path = report_manager.generate_html_report("Page Summary", summary, sources=[navigator.get_current_url()], metrics=metrics)
                     else:
-                        path = report_manager.generate_markdown_report("Page Summary", summary, sources=[navigator.get_current_url()])
+                        path = report_manager.generate_markdown_report("Page Summary", summary, sources=[navigator.get_current_url()], metrics=metrics)
                     print(f"Report generated: {path}")
             else:
                 print("Could not retrieve content from the page.")
@@ -411,23 +484,46 @@ def _run_cli():
                 print(f"Error: Script '{args.identifier}' not found or could not be removed.")
         elif args.script_command == 'run':
             safety_manager.ensure_disclaimer_accepted()
+            script = script_manager.get_script(args.identifier)
+            if not script:
+                print(f"Error: Script '{args.identifier}' not found.")
+                return
+
             params = {}
             if args.param:
                 for p in args.param:
                     if '=' in p:
                         k, v = p.split('=', 1)
                         params[k] = v
+            
+            # Preview prompt with params if possible, or just check placeholders
+            prompt = script['prompt']
+            placeholders = script_manager.get_script_placeholders(prompt)
+            if not placeholders:
+                if not safety_manager.check_url_safety(prompt, force=args.force):
+                    print("Aborted due to safety concerns.")
+                    return
+            else:
+                # If there are placeholders, we might check after they are filled.
+                # ScriptManager.run_script handles prompting for missing params.
+                # For now, let's at least check the base prompt.
+                if not safety_manager.check_url_safety(prompt, force=args.force):
+                    print("Warning: Base script prompt contains sensitive keywords.")
+                    if not args.force and not safety_manager.confirm("Proceed to fill parameters?"):
+                        return
+
             script_manager.run_script(args.identifier, navigator=navigator, parameters=params)
     elif args.command == 'report':
         if args.report_command == 'generate':
             refined_prompt, context = navigator.resolve_prompt(args.prompt)
             print("Generating report content...")
-            result = generate_ai_response(refined_prompt, context)
+            result = generate_ai_response(refined_prompt, context, plugin_manager=plugin_manager)
             title = args.title or "General Report"
+            metrics = get_performance_metrics()
             if args.format == 'html':
-                path = report_manager.generate_html_report(title, result, sources=navigator.list_active_browsers())
+                path = report_manager.generate_html_report(title, result, sources=navigator.list_active_browsers(), metrics=metrics)
             else:
-                path = report_manager.generate_markdown_report(title, result, sources=navigator.list_active_browsers())
+                path = report_manager.generate_markdown_report(title, result, sources=navigator.list_active_browsers(), metrics=metrics)
             print(f"Report generated: {path}")
         elif args.report_command == 'list':
             import os
@@ -475,6 +571,7 @@ def _run_cli():
         print(f"Aria Configuration:")
         print(f"  Aria Home: {aria_dir}")
         print(f"  Scripts Directory: {os.path.join(aria_dir, 'scripts')}")
+        print(f"  Plugins Directory: {os.path.join(aria_dir, 'plugins')}")
         print(f"  Current Browser: {navigator._get_current_browser()}")
         print(f"  Active Browsers: {', '.join(navigator.list_active_browsers())}")
     elif args.command == 'man':
@@ -489,6 +586,10 @@ def _run_cli():
         print("  page <id> goto   - Navigate a tab.")
         print("  script list      - List saved scripts.")
         print("  script run <id>  - Execute a saved script.")
+        print("  security         - Show security best practices.")
+        print("\nOptions:")
+        print("  --slow-mo SEC    - Add delay between actions.")
+        print("  --force          - Bypass safety warnings.")
         print("\nSee runbooks in docs/runbooks/ for full details.")
     elif args.command == 'tutorial':
         print("Welcome to the Aria Tutorial!")
@@ -500,8 +601,11 @@ def _run_cli():
         print("\nHappy automating!")
     elif args.command == 'version':
         print(f"aria CLI version {VERSION}")
+    elif args.command == 'security':
+        print(safety_manager.get_security_best_practices())
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()

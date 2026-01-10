@@ -42,5 +42,18 @@ class TestScriptParameterization(unittest.TestCase):
         # Cleanup
         self.script_manager.remove_script("test_param_script")
 
+    def test_run_script_with_env_placeholders(self):
+        prompt = "Connect to {{env:TEST_SITE_URL}}"
+        script_id = self.script_manager.create_script(prompt, name="test_env_script")
+        
+        mock_nav = MagicMock()
+        
+        with patch.dict(os.environ, {"TEST_SITE_URL": "https://secret.com"}):
+            self.script_manager.run_script("test_env_script", navigator=mock_nav)
+            mock_nav.navigate_with_prompt.assert_called_with("Connect to https://secret.com")
+        
+        # Cleanup
+        self.script_manager.remove_script("test_env_script")
+
 if __name__ == "__main__":
     unittest.main()

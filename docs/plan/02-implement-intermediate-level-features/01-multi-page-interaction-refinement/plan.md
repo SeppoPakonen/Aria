@@ -8,11 +8,12 @@ Enable the CLI to synthesize and process information across multiple open tabs/p
    - Enhance prompt processing to identify references to other tabs (e.g., "tab 0", "tab 1").
    - Update `navigator` to efficiently retrieve content from multiple tabs.
    - Implement the synthesis logic using the Gemini API to combine information from referenced tabs based on the user's prompt.
-2. **[TODO] Task 02: Improve tab selection and persistence**
-   - Ensure `tab_id` handling is robust across different browser sessions.
-   - Implement better heuristics for matching titles or URLs in `goto` commands.
-3. **[TODO] Task 03: Implement basic tab grouping/tagging (Optional)**
-   - Allow users to "tag" tabs for easier reference in prompts (e.g., "tag:news").
+2. **[DONE] Task 02: Improve tab selection and persistence**
+   - Implemented robust `tab_id` handling and switching.
+   - Added heuristics for matching titles, URLs, and indices in `goto` commands.
+3. **[DONE] Task 03: Implement basic tab grouping/tagging (Optional)**
+   - Added `tag` command to label tabs.
+   - Supported `tag:NAME` references in prompts for context gathering.
 
 ## Task 01: Implement cross-tab content synthesis - Details
 - **Input**: A prompt containing references like `tab N` where N is the index from `page list`.
