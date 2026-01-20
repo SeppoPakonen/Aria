@@ -44,6 +44,9 @@ class WhatsAppScraper:
         print("Starting data refresh for WhatsApp...")
         conversations = self.scrape_all_conversations()
         
+        # Update persistent registry
+        self.sm.update_registry(self.site_name, [c["name"] for c in conversations])
+        
         self.sm.save_data(self.site_name, "metadata.json", {
             "last_refresh": time.ctime(),
             "conversation_count": len(conversations)

@@ -82,3 +82,31 @@ class SiteManager:
         if not os.path.exists(self.base_dir):
             return []
         return [d for d in os.listdir(self.base_dir) if os.path.isdir(os.path.join(self.base_dir, d))]
+
+    def get_registry(self, site_name: str) -> Dict[str, Any]:
+        """Returns the persistent registry for a site."""
+        reg = self.load_data(site_name, "registry.json")
+        return reg if reg else {"next_id": 1, "mappings": {}}
+
+    def update_registry(self, site_name: str, item_names: List[str]):
+        """Updates the registry with new items, maintaining persistent IDs."""
+        reg = self.get_registry(site_name)
+        mappings = reg.get("mappings", {})
+        next_id = reg.get("next_id", 1)
+        
+        # Existing names to IDs for quick lookup
+        name_to_id = {v: k for k, v in mappings.items()}
+        
+        updated = False
+        for name in sorted(item_names):
+            if name not in name_to_id:
+                mappings[str(next_id)] = name
+                next_id += 1
+                updated = True
+        
+        if updated:
+            reg["mappings"] = mappings
+            reg["next_id"] = next_id
+            self.save_data(site_name, "registry.json", reg)
+        
+        return mappings

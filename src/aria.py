@@ -349,7 +349,8 @@ def _run_cli():
     
     parser_site_show = site_subparsers.add_parser('show', help='Show local data for a site.')
     parser_site_show.add_argument('site_name', type=str, help='The name of the site.')
-    parser_site_show.add_argument('data_type', type=str, choices=['recent', 'all'], default='recent', nargs='?', help='Type of data to show.')
+    parser_site_show.add_argument('action', type=str, default='recent', nargs='?', help='Action to perform (recent, list, <id> show, <id> people).')
+    parser_site_show.add_argument('sub_action', type=str, nargs='?', help='Secondary action (e.g., "show" or "people" when an ID is provided).')
 
     # Define the 'diag' command
     subparsers.add_parser('diag', help='Show diagnostic information.')
@@ -942,45 +943,84 @@ def _run_cli():
                 print(f"Scraper for '{site_name}' is not yet fully implemented.")
         elif args.site_command == 'show':
             site_name = args.site_name
-            if site_name in ["google-messages", "whatsapp"] and args.data_type == 'recent':
-                # Custom logic for messaging sites: Look into convo_*.json files
-                site_dir = sm.get_site_dir(site_name)
-                files = [f for f in os.listdir(site_dir) if f.startswith("convo_") and f.endswith(".json")]
-                
-                recent_messages = []
-                for f in files:
-                    data = sm.load_data(site_name, f)
-                    if data and "messages" in data and data["messages"]:
-                        # Get last message from each conversation
-                        last_msg = data["messages"][-1]
-                        recent_messages.append({
-                            "conversation": data.get("name", "Unknown"),
-                            "text": last_msg.get("text", "[Media]"),
-                            "timestamp": last_msg.get("timestamp", ""),
-                            "type": last_msg.get("type", "")
-                        })
-                
-                if recent_messages:
-                    # Sort by some heuristic (e.g., conversation name for now)
-                    print(f"Recent messages from {site_name}:")
-                    for msg in sorted(recent_messages, key=lambda x: x["conversation"])[:15]:
-                        prefix = ">>" if msg["type"] == "sent" else "<<"
-                        ts_display = f"[{msg['timestamp']}] " if msg['timestamp'] and msg['timestamp'] != "Unknown" else ""
-                        print(f"{ts_display}{msg['conversation']}: {prefix} {msg['text']}")
-                else:
-                    print(f"No recent messages found for {site_name}. Run 'site refresh {site_name}' first.")
+            sm = SiteManager()
+            reg = sm.get_registry(site_name)
+            mappings = reg.get("mappings", {})
             
-            elif args.data_type == 'recent':
-                # Generic fallback
-                data = sm.get_recent_items(site_name, "conversations.json") or sm.get_recent_items(site_name, "events.json")
-                if data:
-                    print(f"Recent items for {site_name}:")
-                    import json
-                    print(json.dumps(data, indent=2))
+            # Handle numerical ID if provided as 'action'
+            item_name = None
+            if args.action and args.action.isdigit():
+                item_name = mappings.get(args.action)
+                if not item_name:
+                    print(f"Error: No conversation with ID {args.action} found in registry.")
+                    return
+            
+            # 1. Action: list
+            if args.action == 'list':
+                if mappings:
+                    print(f"Conversations for {site_name} (Persistent IDs):")
+                    for cid in sorted(mappings.keys(), key=int):
+                        print(f" {cid:3}: {mappings[cid]}")
                 else:
-                    print(f"No recent data found for {site_name}. Run 'site refresh {site_name}' first.")
-        else:
-            parser_site.print_help()
+                    print(f"No conversations indexed for {site_name}. Run 'site refresh {site_name}' first.")
+            
+            # 2. Action: <id> show
+            elif item_name and args.sub_action == 'show':
+                safe_name = "".join([c if c.isalnum() else "_" for c in item_name])
+                data = sm.load_data(site_name, f"convo_{safe_name}.json")
+                if data and "messages" in data:
+                    print(f"Messages for {item_name}:")
+                    for msg in data["messages"]:
+                        prefix = ">>" if msg["type"] == "sent" else "<<"
+                        ts = f"[{msg['timestamp']}] " if msg['timestamp'] and msg['timestamp'] != "Unknown" else ""
+                        print(f"{ts}{prefix} {msg['text']}")
+                else:
+                    print(f"No message data found for {item_name}.")
+
+            # 3. Action: <id> people
+            elif item_name and args.sub_action == 'people':
+                # For now, we often only have the conversation name as the 'person' 
+                # unless it's a group or we extract phone numbers.
+                # Heuristic: if name contains numbers, it might be a phone number.
+                print(f"Participants in {item_name}:")
+                print(f"- {item_name}")
+                # TODO: Implement deeper extraction of group participants if available in JSON
+
+            # 4. Action: recent (Default)
+            elif args.action == 'recent' or (not args.action and not item_name):
+                if site_name in ["google-messages", "whatsapp"]:
+                    site_dir = sm.get_site_dir(site_name)
+                    files = [f for f in os.listdir(site_dir) if f.startswith("convo_") and f.endswith(".json")]
+                    recent_messages = []
+                    for f in files:
+                        data = sm.load_data(site_name, f)
+                        if data and "messages" in data and data["messages"]:
+                            last_msg = data["messages"][-1]
+                            recent_messages.append({
+                                "conversation": data.get("name", "Unknown"),
+                                "text": last_msg.get("text", "[Media]"),
+                                "timestamp": last_msg.get("timestamp", ""),
+                                "type": last_msg.get("type", "")
+                            })
+                    if recent_messages:
+                        print(f"Recent messages from {site_name}:")
+                        for msg in sorted(recent_messages, key=lambda x: x["conversation"])[:15]:
+                            prefix = ">>" if msg["type"] == "sent" else "<<"
+                            ts_display = f"[{msg['timestamp']}] " if msg['timestamp'] and msg['timestamp'] != "Unknown" else ""
+                            print(f"{ts_display}{msg['conversation']}: {prefix} {msg['text']}")
+                    else:
+                        print(f"No recent messages found for {site_name}. Run 'site refresh {site_name}' first.")
+                else:
+                    # Generic fallback
+                    data = sm.get_recent_items(site_name, "conversations.json") or sm.get_recent_items(site_name, "events.json")
+                    if data:
+                        print(f"Recent items for {site_name}:")
+                        import json
+                        print(json.dumps(data, indent=2))
+                    else:
+                        print(f"No recent data found for {site_name}. Run 'site refresh {site_name}' first.")
+            else:
+                parser_site_show.print_help()
     elif args.command == 'diag':
         import sys
         import platform

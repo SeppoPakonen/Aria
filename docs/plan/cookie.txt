@@ -2,9 +2,9 @@
 
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
-- **Phase**: 03-whatsapp-and-threads-integration
-- **Task**: 01-whatsapp-navigation-and-scraping
-- **Final Alignment**: Implemented WhatsApp scraper with synthetic click events for reliable thread switching and robust timestamp extraction from data-pre-plain-text. Verified E2E flow with 'site refresh' and 'site show'.
+- **Phase**: 02-google-messages-integration
+- **Task**: 05-persistent-numbering-and-subcommands
+- **Final Alignment**: Implemented persistent numbering using a registry.json. Added 'list', '<id> show', and '<id> people' subcommands to 'site show'. Verified E2E for Google Messages.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
