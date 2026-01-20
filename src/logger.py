@@ -10,8 +10,61 @@ import contextvars
 # Context variable to store the trace ID for the current execution context
 trace_id_var = contextvars.ContextVar("trace_id", default=None)
 
+# Context variable to store secrets that should be redacted from logs
+secrets_var = contextvars.ContextVar("secrets", default=set())
+
 # Global list to store performance metrics for the current execution
 _performance_metrics = []
+
+def add_secret(secret):
+    """Adds a secret to the current context for redaction in logs."""
+    if not secret or not isinstance(secret, str):
+        return
+    secrets = secrets_var.get().copy()
+    secrets.add(secret)
+    secrets_var.set(secrets)
+
+def redact(text):
+    """Redacts registered secrets from the given text."""
+    if not isinstance(text, str):
+        return text
+    secrets = secrets_var.get()
+    if not secrets:
+        return text
+    
+    # Sort secrets by length descending to avoid partial redaction
+    # if one secret is a substring of another.
+    for secret in sorted(secrets, key=len, reverse=True):
+        if secret and len(secret) > 3: # Avoid redacting very short strings
+            text = text.replace(secret, "[REDACTED]")
+    return text
+
+class RedactingFilter(logging.Filter):
+    """Filter that redacts secrets from log records."""
+    def filter(self, record):
+        if isinstance(record.msg, str):
+            record.msg = redact(record.msg)
+        
+        if record.args:
+            if isinstance(record.args, tuple):
+                record.args = tuple(redact(arg) if isinstance(arg, str) else arg for arg in record.args)
+            elif isinstance(record.args, dict):
+                record.args = {k: redact(v) if isinstance(v, str) else v for k, v in record.args.items()}
+        
+        # Also redact extra attributes
+        for key, value in record.__dict__.items():
+            if key not in {'msg', 'args'} and isinstance(value, str):
+                # We skip standard attributes that shouldn't be redacted or don't contain secrets
+                if not key.startswith('_') and key not in {'levelname', 'name', 'pathname', 'filename', 'module', 'funcName'}:
+                    setattr(record, key, redact(value))
+        
+        return True
+
+class RedactingFormatter(logging.Formatter):
+    """Formatter that redacts secrets from the log message (backup if filter is not used)."""
+    def format(self, record):
+        formatted = super().format(record)
+        return redact(formatted)
 
 class JsonFormatter(logging.Formatter):
     """Custom JSON formatter for structured logging."""
@@ -98,13 +151,14 @@ def setup_logging(level=logging.INFO, json_format=False):
     if json_format:
         file_formatter = JsonFormatter()
     else:
-        file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_formatter = RedactingFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     
-    console_formatter = logging.Formatter('%(levelname)s: %(message)s')
+    console_formatter = RedactingFormatter('%(levelname)s: %(message)s')
     
     # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
+    root_logger.addFilter(RedactingFilter())
     
     # Clear existing handlers
     for handler in root_logger.handlers[:]:

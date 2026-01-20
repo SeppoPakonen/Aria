@@ -66,6 +66,11 @@ Aria requires Selenium webdrivers to interface with your browsers.
 choco install selenium-all-drivers
 ```
 
+**On Gentoo Linux (as root):**
+```bash
+emerge --ask net-misc/geckodriver www-apps/chromedriver-bin
+```
+
 ### 3. Python Dependencies
 Install the required Python packages:
 ```bash

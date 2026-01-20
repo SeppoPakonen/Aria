@@ -1,6 +1,6 @@
 selenium
 webdriver-manager
-google-generativeai
+google-genai
 # openai  # Uncomment if using OpenAI
 # anthropic # Uncomment if using Anthropic
 # python-dotenv

@@ -4,12 +4,23 @@ This runbook details `aria`'s commands for accessing internal information: setti
 
 ## `aria settings`
 
-Displays the current configuration settings of the `aria` CLI. This might include paths to browser executables, default profiles, logging levels, or other customizable parameters. It's useful for verifying your setup or diagnosing unexpected behavior.
+Displays the current configuration settings of the `aria` CLI. This includes paths to Aria home, active browsers, log levels, and default AI providers. It's useful for verifying your setup or diagnosing unexpected behavior.
 
 ```bash
 # Linux/macOS & Windows CMD
 aria settings
 ```
+
+## `aria settings export-artifacts`
+
+Packages all execution artifacts (logs, reports, session metadata) into a single ZIP archive. This is particularly useful for collecting diagnostics in CI/CD environments or when reporting bugs.
+
+```bash
+# Linux/macOS & Windows CMD
+aria settings export-artifacts --path my-run.zip
+```
+Note: Sensitive information like `credentials.json` is automatically excluded from the archive.
+
 
 **Sample Output Expectation (Generic Description)**:
 The output will typically be a structured list (e.g., JSON, YAML, or key-value pairs) showing various configurable options and their current values. It will not be an exact output, but will reflect the state of `aria`'s internal settings.

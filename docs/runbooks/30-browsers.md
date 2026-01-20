@@ -4,7 +4,7 @@ This runbook covers how to control browser instances using `aria open` and `aria
 
 ## `aria open` / `aria close` Usage
 
-### `aria open {firefox|chrome|opera|edge|safari}`
+### `aria open {firefox|chrome|edge}`
 
 This command launches the specified browser. If the browser is already running, `aria` will simply connect to it (ensuring idempotency where possible).
 
@@ -16,7 +16,7 @@ aria open chrome
 aria open firefox
 ```
 
-### `aria close [{firefox|chrome|opera|edge|safari}]`
+### `aria close [{firefox|chrome|edge}]`
 
 This command closes browser instances.
 

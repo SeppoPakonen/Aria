@@ -2,8 +2,10 @@ import os
 import json
 import re
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import WebDriverException, TimeoutException, StaleElementReferenceException
 
 # Webdriver managers
 from webdriver_manager.chrome import ChromeDriverManager
@@ -23,46 +25,43 @@ from selenium.webdriver.edge.options import Options as EdgeOptions
 from selenium.webdriver.remote.webdriver import WebDriver
 from logger import get_logger, time_it
 from exceptions import BrowserError, SessionError, NavigationError
+from utils import retry
 import time
+from selenium.common.exceptions import WebDriverException
 
 logger = get_logger("navigator")
 
-def retry_on_browser_error(retries=3, initial_delay=1, backoff_factor=2):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            from selenium.common.exceptions import WebDriverException
-            last_exception = None
-            current_delay = initial_delay
-            for i in range(retries):
-                try:
-                    return func(*args, **kwargs)
-                except (WebDriverException, BrowserError) as e:
-                    last_exception = e
-                    if i < retries - 1:
-                        logger.warning(
-                            f"Browser operation failed (attempt {i+1}/{retries}). Retrying in {current_delay}s...",
-                            extra={
-                                "attempt": i + 1,
-                                "max_retries": retries,
-                                "delay": current_delay,
-                                "error": str(e),
-                                "function": func.__name__
-                            }
-                        )
-                        time.sleep(current_delay)
-                        current_delay *= backoff_factor
-                    else:
-                        logger.error(
-                            f"Browser operation failed after {retries} attempts.",
-                            extra={
-                                "max_retries": retries,
-                                "error": str(e),
-                                "function": func.__name__
-                            }
-                        )
-            raise last_exception
-        return wrapper
-    return decorator
+class BaseNavigator:
+    """Abstract base class for all navigators."""
+    def __init__(self):
+        self.plugin_manager = None
+
+    def start_session(self, browser_name="chrome", headless=False, force=False, profile=None):
+        raise NotImplementedError()
+
+    def connect_to_session(self, browser_name=None):
+        raise NotImplementedError()
+
+    def close_session(self, browser_name=None):
+        raise NotImplementedError()
+
+    def navigate(self, url):
+        raise NotImplementedError()
+
+    def navigate_with_prompt(self, prompt):
+        raise NotImplementedError()
+
+    def list_tabs(self):
+        raise NotImplementedError()
+
+    def goto_tab(self, identifier):
+        raise NotImplementedError()
+
+    def get_page_content(self):
+        raise NotImplementedError()
+
+    def new_tab(self, url="about:blank"):
+        raise NotImplementedError()
 
 class ReusableRemote(webdriver.Remote):
     def __init__(self, command_executor, options, session_id):
@@ -77,8 +76,9 @@ class ReusableRemote(webdriver.Remote):
         else:
             super().start_session(capabilities, browser_profile)
 
-class AriaNavigator:
+class AriaNavigator(BaseNavigator):
     def __init__(self):
+        super().__init__()
         self.driver: WebDriver | None = None
         self.throttle_delay = float(os.environ.get("ARIA_THROTTLE_DELAY", 0.0))
         self.randomize_delay = os.environ.get("ARIA_RANDOMIZE_DELAY", "true").lower() == "true"
@@ -96,6 +96,21 @@ class AriaNavigator:
             
             logger.info(f"Throttling for {delay:.2f}s", extra={"delay": delay})
             time.sleep(delay)
+
+    def wait_for_element(self, selector, by=By.CSS_SELECTOR, timeout=10):
+        """Waits for an element to be present and visible in the DOM."""
+        if not self.driver:
+            self.driver = self.connect_to_session()
+        if not self.driver:
+            raise SessionError("No active session.")
+            
+        try:
+            wait = WebDriverWait(self.driver, timeout)
+            element = wait.until(EC.visibility_of_element_located((by, selector)))
+            return element
+        except TimeoutException:
+            logger.error(f"Timed out waiting for element: {selector}")
+            raise BrowserError(f"Timed out waiting for element: {selector}")
 
     def get_session_file_path(self, browser_name=None):
         temp_dir = os.path.join(os.path.expanduser("~"), ".aria")
@@ -202,10 +217,10 @@ class AriaNavigator:
         return None
 
     @time_it(logger)
-    def start_session(self, browser_name="chrome", headless=False, force=False):
+    def start_session(self, browser_name="chrome", headless=False, force=False, profile=None):
         logger.info(
             f"Starting browser session: {browser_name}",
-            extra={"browser": browser_name, "headless": headless, "force": force}
+            extra={"browser": browser_name, "headless": headless, "force": force, "profile": profile}
         )
         session_file = self.get_session_file_path(browser_name)
         
@@ -220,12 +235,14 @@ class AriaNavigator:
                     self._save_session(browser_name, self._load_session_data(browser_name))
                     return self.driver
             else:
-                os.remove(session_file)
+                if os.path.exists(session_file):
+                    os.remove(session_file)
 
         try:
             import subprocess
             import time
             import socket
+            import configparser
 
             def find_free_port():
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -236,12 +253,87 @@ class AriaNavigator:
             
             driver_path = None
             options = None
+            
+            def get_binary_path(browser_type):
+                if browser_type == "chrome":
+                    paths = [
+                        "/usr/bin/google-chrome",
+                        "/usr/bin/google-chrome-stable",
+                        "/usr/bin/chromium",
+                        "/usr/bin/chromium-browser",
+                        "/snap/bin/chromium",
+                        "/snap/bin/chromium-browser"
+                    ]
+                elif browser_type == "firefox":
+                    paths = [
+                        "/usr/bin/firefox",
+                        "/usr/bin/firefox-esr",
+                        "/snap/bin/firefox",
+                        "/usr/local/bin/firefox"
+                    ]
+                else:
+                    return None
+                    
+                for path in paths:
+                    if os.path.exists(path):
+                        return path
+                return None
+
+            def get_firefox_profile_path(profile_name_or_path):
+                if not profile_name_or_path:
+                    return None
+                
+                # If it looks like a path, use it
+                if os.path.isabs(profile_name_or_path) or os.path.exists(profile_name_or_path):
+                    return profile_name_or_path
+                
+                # Check profiles.ini
+                profiles_ini_path = os.path.join(os.path.expanduser("~"), ".mozilla", "firefox", "profiles.ini")
+                if os.path.exists(profiles_ini_path):
+                    try:
+                        config = configparser.ConfigParser()
+                        config.read(profiles_ini_path)
+                        for section in config.sections():
+                            if section.startswith("Profile"):
+                                name = config.get(section, "Name", fallback="")
+                                if name == profile_name_or_path:
+                                    path = config.get(section, "Path", fallback="")
+                                    is_relative = config.getint(section, "IsRelative", fallback=1)
+                                    if is_relative:
+                                        return os.path.join(os.path.dirname(profiles_ini_path), path)
+                                    return path
+                    except Exception as e:
+                        logger.error(f"Error parsing profiles.ini: {e}")
+                
+                return None
+
             if browser_name == "chrome":
                 driver_path = ChromeDriverManager().install()
                 options = ChromeOptions()
+                if os.name == 'posix':
+                    bin_path = get_binary_path("chrome")
+                    if bin_path:
+                        logger.info(f"Found Chrome/Chromium binary at: {bin_path}")
+                        options.binary_location = bin_path
             elif browser_name == "firefox":
                 driver_path = GeckoDriverManager().install()
                 options = FirefoxOptions()
+                if os.name == 'posix':
+                    bin_path = get_binary_path("firefox")
+                    if bin_path:
+                        logger.info(f"Found Firefox binary at: {bin_path}")
+                        options.binary_location = bin_path
+                
+                if profile:
+                    profile_path = get_firefox_profile_path(profile)
+                    if profile_path:
+                        print(f"Using Firefox profile (Direct): {profile_path}")
+                        # Use the profile directly (requires Firefox to be closed)
+                        options.add_argument("-profile")
+                        options.add_argument(profile_path)
+                    else:
+                        print(f"Warning: Could not find Firefox profile '{profile}'. Using default.")
+
             elif browser_name == "edge":
                 driver_path = EdgeChromiumDriverManager().install()
                 options = EdgeOptions()
@@ -317,14 +409,13 @@ class AriaNavigator:
             return None
         
         # Optimization: Check if process is still running
-        if not self._is_process_running(session_data.get("driver_pid")):
+        driver_pid = session_data.get("driver_pid")
+        if not self._is_process_running(driver_pid):
             logger.warning(
-                f"Driver process for {browser_name} is no longer running.",
-                extra={"browser": browser_name, "driver_pid": session_data.get("driver_pid")}
+                f"Driver process for {browser_name} (PID {driver_pid}) is no longer running.",
+                extra={"browser": browser_name, "driver_pid": driver_pid}
             )
-            session_file = self.get_session_file_path(browser_name)
-            if os.path.exists(session_file):
-                os.remove(session_file)
+            self._remove_session_file(browser_name)
             return None
 
         try:
@@ -335,15 +426,20 @@ class AriaNavigator:
             elif browser_name == "edge":
                 options = EdgeOptions()
             else:
-                return None
+                # Default to ChromeOptions if unknown, or return None
+                options = ChromeOptions()
 
             driver = ReusableRemote(
                 command_executor=session_data["url"],
                 options=options,
                 session_id=session_data["session_id"]
             )
-            # Verify it works
+            
+            # Verify it works with a timeout
+            driver.set_page_load_timeout(5)
+            driver.set_script_timeout(5)
             _ = driver.current_url
+            
             self.driver = driver
             logger.info(
                 f"Successfully reconnected to {browser_name} session.",
@@ -355,10 +451,60 @@ class AriaNavigator:
             return self.driver
         except Exception as e:
             logger.error(f"Failed to connect to {browser_name} session: {e}")
-            session_file = self.get_session_file_path(browser_name)
-            if os.path.exists(session_file):
-                os.remove(session_file)
+            # If we failed to connect but the process is still "running", it might be a zombie
+            self.close_session(browser_name)
             return None
+
+    def _remove_session_file(self, browser_name):
+        session_file = self.get_session_file_path(browser_name)
+        if os.path.exists(session_file):
+            os.remove(session_file)
+        if self._get_current_browser() == browser_name:
+            current_file = self.get_session_file_path()
+            if os.path.exists(current_file):
+                os.remove(current_file)
+
+    def cleanup_orphaned_sessions(self):
+        """Identifies and cleans up stale session files and orphaned driver processes."""
+        logger.info("Starting cleanup of orphaned sessions.")
+        browsers = self.list_active_browsers()
+        cleaned_count = 0
+        
+        for browser in browsers:
+            session_data = self._load_session_data(browser)
+            if not session_data:
+                continue
+                
+            is_healthy = False
+            try:
+                # Try to connect and check health
+                if browser == "chrome":
+                    options = ChromeOptions()
+                elif browser == "firefox":
+                    options = FirefoxOptions()
+                elif browser == "edge":
+                    options = EdgeOptions()
+                else:
+                    options = ChromeOptions()
+
+                # Short timeout for cleanup check
+                driver = ReusableRemote(
+                    command_executor=session_data["url"],
+                    options=options,
+                    session_id=session_data["session_id"]
+                )
+                _ = driver.current_url
+                is_healthy = True
+                driver.quit() # Close the connection but the session might persist if not ReusableRemote
+            except:
+                is_healthy = False
+            
+            if not is_healthy:
+                logger.info(f"Cleaning up unhealthy session for {browser}")
+                self.close_session(browser)
+                cleaned_count += 1
+        
+        return cleaned_count
 
     def list_active_browsers(self):
         temp_dir = os.path.join(os.path.expanduser("~"), ".aria")
@@ -392,9 +538,14 @@ class AriaNavigator:
                     options = FirefoxOptions()
                 elif browser_name == "edge":
                     options = EdgeOptions()
+                else:
+                    options = ChromeOptions()
                 
-                driver = webdriver.Remote(command_executor=session_data["url"], options=options)
-                driver.session_id = session_data["session_id"]
+                driver = ReusableRemote(
+                    command_executor=session_data["url"],
+                    options=options,
+                    session_id=session_data["session_id"]
+                )
                 driver.quit()
             except:
                 pass
@@ -406,7 +557,7 @@ class AriaNavigator:
                         subprocess.run(['taskkill', '/F', '/T', '/PID', str(driver_pid)], capture_output=True)
                     else:
                         import signal
-                        os.kill(driver_pid, signal.SIGTERM)
+                        os.kill(driver_pid, signal.SIGKILL) # More aggressive cleanup
                 except:
                     pass
 
@@ -422,7 +573,7 @@ class AriaNavigator:
         print(f"Aria session for {browser_name} closed.")
 
     @time_it(logger)
-    @retry_on_browser_error(retries=2, initial_delay=1)
+    @retry((WebDriverException, BrowserError), tries=3, delay=1)
     def navigate(self, url):
         self.throttle()
         if self.plugin_manager:
@@ -453,15 +604,90 @@ class AriaNavigator:
             logger.error(f"Unexpected error during navigation to {url}: {e}", extra={"url": url, "error": str(e)})
             raise BrowserError(f"An unexpected error occurred during navigation: {e}")
 
+    def extract_links(self):
+        """Extracts visible links from the current page."""
+        if not self.driver:
+            return []
+        
+        elements = self.driver.find_elements(By.TAG_NAME, "a")
+        links = []
+        for i, el in enumerate(elements):
+            try:
+                if el.is_displayed():
+                    text = el.text.strip() or el.get_attribute("aria-label") or ""
+                    href = el.get_attribute("href")
+                    if href and (text or href):
+                        links.append({"id": i, "text": text[:50], "url": href})
+            except:
+                pass
+        return links[:100] # Limit to 100 links to save context
+
     def navigate_with_prompt(self, prompt):
         """Uses AI to determine where to navigate based on a prompt."""
         logger.info(f"Navigating with prompt: {prompt}")
-        # In a real implementation, this would call Gemini to get a URL or perform a search.
-        # For now, we'll just do a search on DuckDuckGo as a heuristic.
+        
+        if not self.driver:
+            self.driver = self.connect_to_session()
+        
+        if not self.driver:
+            print("No active session. Use 'aria open' to start a session.")
+            return
+
+        # 1. Get current context (links)
+        links = self.extract_links()
+        
+        # 2. Get AI Provider
+        provider = None
+        if self.plugin_manager:
+            # Try to get default 'gemini' or any available
+            provider = self.plugin_manager.get_ai_provider("gemini")
+            if not provider:
+                providers = self.plugin_manager.list_ai_providers()
+                if providers:
+                    provider = self.plugin_manager.get_ai_provider(providers[0])
+        
+        url_to_navigate = None
+        
+        if provider and links:
+            import json
+            context_str = json.dumps(links, indent=2)
+            
+            ai_prompt = (
+                f"User request: '{prompt}'\n\n"
+                f"Current Page Links:\n{context_str}\n\n"
+                "Determine the best action.\n"
+                "If the user wants to click a specific link or navigate to a page mentioned above, return ONLY a JSON object: {\"url\": \"THE_URL\"}.\n"
+                "If the user wants to search the web or the request cannot be fulfilled by the links above, return ONLY: {\"search\": \"SEARCH_QUERY\"}.\n"
+                "Return ONLY valid JSON."
+            )
+            
+            try:
+                print("Analyzing page content with AI...")
+                response = provider.generate(ai_prompt, output_format="json")
+                # Clean up response if needed (markdown stripping is handled in provider usually, but be safe)
+                if response.startswith("```"):
+                    response = response.split("\n", 1)[1].rsplit("\n", 1)[0]
+                
+                data = json.loads(response)
+                if "url" in data:
+                    url_to_navigate = data["url"]
+                    print(f"AI identified target: {url_to_navigate}")
+                elif "search" in data:
+                    print(f"AI suggests searching for: {data['search']}")
+                    prompt = data['search'] # Fallthrough to search logic
+            except Exception as e:
+                logger.error(f"AI analysis failed: {e}")
+                print(f"AI analysis failed: {e}")
+
+        if url_to_navigate:
+            self.navigate(url_to_navigate)
+            return
+
+        # Fallback to DuckDuckGo search
         import urllib.parse
         search_url = f"https://duckduckgo.com/?q={urllib.parse.quote(prompt)}"
         self.navigate(search_url)
-        print(f"Heuristic: Searching for '{prompt}' on DuckDuckGo.")
+        print(f"Searching for '{prompt}' on DuckDuckGo.")
 
     @time_it(logger)
     def goto_tab(self, identifier):
@@ -529,7 +755,7 @@ class AriaNavigator:
             return False
 
     @time_it(logger)
-    @retry_on_browser_error(retries=2, initial_delay=1)
+    @retry((WebDriverException, BrowserError, StaleElementReferenceException), tries=3, delay=1)
     def get_page_content(self):
         if not self.driver:
             self.driver = self.connect_to_session()
@@ -538,8 +764,10 @@ class AriaNavigator:
             raise SessionError("No active session. Use 'aria open' to start a session.")
 
         try:
-            return self.driver.find_element(By.TAG_NAME, 'body').text
-        except WebDriverException as e:
+            # Wait for body to be present
+            body = self.wait_for_element('body', by=By.TAG_NAME, timeout=5)
+            return body.text
+        except (WebDriverException, BrowserError) as e:
             logger.error(f"Error getting page content: {e}")
             raise BrowserError(f"Could not retrieve content from the page: {e}")
 

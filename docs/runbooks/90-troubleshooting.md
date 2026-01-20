@@ -63,7 +63,28 @@ This runbook addresses common issues encountered while using the `aria` CLI and 
         aria page 0 summarize "This is a prompt with spaces and special characters!"
         aria page 0 summarize 'This is a prompt with spaces and special characters!'
         ```
-    3.  If a prompt itself needs to contain quotes, you might need to escape them according to your shell's rules (e.g., `\"` in Bash/CMD, or change to single quotes if double quotes are within a string).
+
+## Logs and Artifacts
+
+For deep diagnostics, Aria maintains logs and provides a way to export them.
+
+### Checking Logs
+Aria logs detailed information to `~/.aria/aria.log`. You can view the last few entries using:
+```bash
+# Linux/macOS
+tail -n 20 ~/.aria/aria.log
+
+# Windows PowerShell
+Get-Content ~\.aria\aria.log -Tail 20
+```
+Note: Aria automatically redacts secrets and credentials from logs.
+
+### Exporting Artifacts
+If you are running Aria in CI/CD or need to share diagnostics for a bug report:
+```bash
+aria settings export-artifacts --path diagnostics.zip
+```
+This zip file will contain `aria.log`, generated reports, and session metadata, but NOT your `credentials.json`.
 
 ## Diagnostic Commands
 

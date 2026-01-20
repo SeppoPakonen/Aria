@@ -1,7 +1,8 @@
 import os
 import json
-from logger import get_logger, time_it
+from logger import get_logger, time_it, add_secret, redact
 from exceptions import ScriptError
+from credential_manager import CredentialManager
 
 logger = get_logger("script_manager")
 
@@ -10,6 +11,7 @@ class ScriptManager:
         self.aria_dir = os.path.join(os.path.expanduser("~"), ".aria")
         self.scripts_dir = os.path.join(self.aria_dir, "scripts")
         self.metadata_file = os.path.join(self.scripts_dir, "metadata.json")
+        self.credential_manager = CredentialManager()
         
         if not os.path.exists(self.scripts_dir):
             os.makedirs(self.scripts_dir)
@@ -138,17 +140,41 @@ class ScriptManager:
                     if val is None:
                         logger.warning(f"Environment variable '{env_var}' not found for placeholder '{{{{{placeholder}}}}}'.")
                         if placeholder not in parameters:
-                            val = input(f"Enter value for environment variable '{env_var}': ")
+                            if os.environ.get("ARIA_NON_INTERACTIVE") == "true":
+                                raise ScriptError(f"Missing environment variable '{env_var}' for non-interactive run.")
+                            import getpass
+                            val = getpass.getpass(f"Enter value for environment variable '{env_var}': ")
                             parameters[placeholder] = val
                     else:
                         parameters[placeholder] = val
+                    if parameters.get(placeholder):
+                        add_secret(parameters[placeholder])
+                elif placeholder.startswith("vault:"):
+                    vault_key = placeholder[6:]
+                    val = self.credential_manager.get_credential(vault_key)
+                    if val is None:
+                        logger.warning(f"Vault key '{vault_key}' not found for placeholder '{{{{{placeholder}}}}}'.")
+                        if placeholder not in parameters:
+                            if os.environ.get("ARIA_NON_INTERACTIVE") == "true":
+                                raise ScriptError(f"Missing vault key '{vault_key}' for non-interactive run.")
+                            import getpass
+                            val = getpass.getpass(f"Enter value for vault key '{vault_key}': ")
+                            parameters[placeholder] = val
+                            if val and input(f"Save '{vault_key}' to vault? (y/n): ").lower() == 'y':
+                                self.credential_manager.set_credential(vault_key, val)
+                    else:
+                        parameters[placeholder] = val
+                    if parameters.get(placeholder):
+                        add_secret(parameters[placeholder])
                 elif placeholder not in parameters:
+                    if os.environ.get("ARIA_NON_INTERACTIVE") == "true":
+                        raise ScriptError(f"Missing parameter '{{{{{placeholder}}}}}' for non-interactive run.")
                     val = input(f"Enter value for '{{{{{placeholder}}}}}': ")
                     parameters[placeholder] = val
             
             prompt = self.apply_parameters(prompt, parameters)
 
-        print(f"Running script {script['id']}: {prompt}")
+        print(f"Running script {script['id']}: {redact(prompt)}")
         
         if script["type"] == "prompt":
             if navigator:

@@ -26,7 +26,7 @@ This quickstart demonstrates a basic `aria` workflow: opening a browser, creatin
     ```bash
     aria open firefox
     ```
-    *(Note: Replace `firefox` with `chrome`, `opera`, `edge`, or `safari` as needed.)*
+    *(Note: Replace `firefox` with `chrome` or `edge` as needed.)*
 
 2.  **Create a new page (tab)**:
     ```bash

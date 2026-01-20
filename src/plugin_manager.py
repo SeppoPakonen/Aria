@@ -18,26 +18,29 @@ class BasePlugin:
     def get_commands(self) -> List[Dict[str, Any]]:
         """
         Returns a list of command definitions to be added to the CLI.
-        Each command definition should be a dictionary suitable for 
-        subparsers.add_parser() and adding arguments.
-        
-        Example:
-        [
-            {
-                "name": "hello",
-                "help": "Prints hello world",
-                "arguments": [
-                    {"name": "--name", "type": str, "help": "Name to greet"}
-                ],
-                "callback": self.hello_callback
-            }
-        ]
         """
         return []
 
     def get_hooks(self) -> Dict[str, Callable]:
         """Returns a mapping of hook names to callback functions."""
         return {}
+
+    def get_ai_providers(self) -> Dict[str, Any]:
+        """Returns a mapping of provider names to AI provider classes."""
+        return {}
+
+    def get_navigators(self) -> Dict[str, Any]:
+        """Returns a mapping of navigator names to Navigator classes."""
+        return {}
+
+class BaseAIProvider:
+    """Base class for AI providers."""
+    def __init__(self, context: Dict[str, Any]):
+        self.context = context
+
+    def generate(self, prompt: str, context: str = "", output_format: str = "text") -> str:
+        """Generates a response from the AI."""
+        raise NotImplementedError("AI providers must implement the generate method.")
 
 class PluginManager:
     """Manages discovery, loading, and registration of Aria plugins."""
@@ -50,6 +53,8 @@ class PluginManager:
         self.context = context or {}
         self.plugins: List[BasePlugin] = []
         self.hooks: Dict[str, List[Callable]] = {}
+        self.ai_providers: Dict[str, BaseAIProvider] = {}
+        self.navigators: Dict[str, Any] = {}
 
         if not os.path.exists(self.plugins_dir):
             os.makedirs(self.plugins_dir, exist_ok=True)
@@ -103,7 +108,7 @@ class PluginManager:
                 logger.info(f"Loaded plugin class: {attr_name} from {module_name}")
 
     def register_plugin(self, plugin: BasePlugin):
-        """Registers a plugin instance and its hooks."""
+        """Registers a plugin instance and its hooks/providers."""
         plugin.on_load()
         self.plugins.append(plugin)
         
@@ -112,6 +117,32 @@ class PluginManager:
             if hook_name not in self.hooks:
                 self.hooks[hook_name] = []
             self.hooks[hook_name].append(callback)
+
+        # Register AI providers
+        for name, provider_class in plugin.get_ai_providers().items():
+            self.ai_providers[name] = provider_class(self.context)
+            logger.info(f"Registered AI provider: {name}")
+
+        # Register Navigators
+        for name, nav_class in plugin.get_navigators().items():
+            self.navigators[name] = nav_class
+            logger.info(f"Registered Navigator: {name}")
+
+    def get_ai_provider(self, name: str) -> BaseAIProvider:
+        """Returns the registered AI provider for the given name."""
+        return self.ai_providers.get(name)
+
+    def list_ai_providers(self) -> List[str]:
+        """Returns a list of all registered AI provider names."""
+        return list(self.ai_providers.keys())
+
+    def get_navigator(self, name: str) -> Any:
+        """Returns the registered Navigator class for the given name."""
+        return self.navigators.get(name)
+
+    def list_navigators(self) -> List[str]:
+        """Returns a list of all registered Navigator names."""
+        return list(self.navigators.keys())
 
     def trigger_hook(self, hook_name: str, *args, **kwargs):
         """Executes all callbacks registered for a given hook."""

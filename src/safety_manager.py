@@ -59,6 +59,11 @@ Aria is a web automation tool. By using this software, you agree to the followin
         if self._is_disclaimer_accepted():
             return
 
+        if os.environ.get("ARIA_NON_INTERACTIVE") == "true":
+            print("Non-interactive mode: Auto-accepting disclaimer.")
+            self._save_acceptance()
+            return
+
         print(self.disclaimer_text)
         try:
             response = input("Do you accept these terms? (y/N): ").strip().lower()
@@ -119,6 +124,10 @@ For full documentation, see: docs/security_best_practices.md
     @staticmethod
     def confirm(message: str, default: bool = False) -> bool:
         """Prompts the user for confirmation."""
+        if os.environ.get("ARIA_NON_INTERACTIVE") == "true":
+            print(f"Non-interactive mode: Auto-responding with {'Yes' if default else 'No'} to: {message}")
+            return default
+
         suffix = " (Y/n)" if default else " (y/N)"
         try:
             response = input(f"{message}{suffix}: ").strip().lower()

@@ -27,13 +27,13 @@ Introduce sophisticated functionalities and architectural considerations to the 
 
 ## Phases
 
-| ID | Name                                      | Objective                                                                     | Link                                                                                    | Status   |
-|----|-------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|----------|
-| 01 | Advanced Workflow Patterns                | Design and outline multi-tab and cross-site interaction strategies.           | [Overview](./01-advanced-workflow-patterns/overview.md)                                 | Planned  |
-| 02 | Resilience and Robustness                 | Propose patterns for error handling, retries, and idempotent operations.      | [Overview](./02-resilience-robustness/overview.md)                                      | Planned  |
-| 03 | Deep Diagnostics and Monitoring           | Enhance logging and telemetry for advanced troubleshooting and performance analysis. | [Overview](./03-deep-diagnostics-monitoring/overview.md)                                | Planned  |
-| 04 | Security and Constraints                  | Define security hygiene and usage constraints for sensitive operations.       | [Overview](./04-security-constraints/overview.md)                                       | Planned  |
-| 05 | Extensibility Architecture Design         | Develop a preliminary design for a plugin-like system for `aria`.             | [Overview](./05-extensibility-architecture-design/overview.md)                          | Planned  |
+| ID | Name                                      | Objective                                                                     | Link                                                                                    | Status      |
+|----|-------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|-------------|
+| 01 | Advanced Workflow Patterns                | Design and outline multi-tab and cross-site interaction strategies.           | [Overview](./01-advanced-workflow-patterns/overview.md)                                 | Completed   |
+| 02 | Resilience and Robustness                 | Propose patterns for error handling, retries, and idempotent operations.      | [Overview](./02-resilience-robustness/overview.md)                                      | Completed   |
+| 03 | Deep Diagnostics and Monitoring           | Enhance logging and telemetry for advanced troubleshooting and performance analysis. | [Overview](./03-deep-diagnostics-monitoring/overview.md)                                | Completed   |
+| 04 | Security and Constraints                  | Define security hygiene and usage constraints for sensitive operations.       | [Overview](./04-security-constraints/overview.md)                                       | Completed   |
+| 05 | Extensibility Architecture Design         | Develop a preliminary design for a plugin-like system for `aria`.             | [Overview](./05-extensibility-architecture-design/overview.md)                          | Completed   |
 
 ## Runbook Alignment
 This track provides advanced usage patterns and underpinnings for capabilities hinted at in the runbooks:

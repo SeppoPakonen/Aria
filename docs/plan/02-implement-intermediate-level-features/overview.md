@@ -35,7 +35,7 @@ Enhance the core `aria` CLI functionalities by improving user experience, adding
 | 03 | Local Report Generation                   | Enable users to generate custom local reports from collected data.            | [Overview](./03-local-report-generation/overview.md)                                    | Completed   |
 | 04 | Script Parameterization Patterns          | Document and enable patterns for passing parameters to `aria` scripts.        | [Overview](./04-script-parameterization-patterns/overview.md)                           | Completed   |
 | 05 | Reliability and Error Handling            | Improve the overall stability and clarity of error messages within the CLI.   | [Overview](./05-reliability-error-handling/overview.md)                                 | Completed   |
-| 06 | Packaging and Release Documentation       | Document the process for packaging and releasing new versions of `aria`.      | [Overview](./06-packaging-release-documentation/overview.md)                            | Planned     |
+| 06 | Packaging and Release Documentation       | Document the process for packaging and releasing new versions of `aria`.      | [Overview](./06-packaging-release-documentation/overview.md)                            | Completed   |
 
 ## Runbook Alignment
 This track expands upon the basic operations covered in the runbooks, providing more advanced capabilities:

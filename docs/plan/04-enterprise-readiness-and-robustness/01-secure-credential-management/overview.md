@@ -11,5 +11,5 @@ Establish robust patterns and mechanisms for handling sensitive data within Aria
 ## Tasks
 1. **01-design-credential-patterns**: Document the approach for environment variable injection and local vault storage.
 2. **[DONE] 02-implement-env-var-injection**: Update `ScriptManager` to support `{{env:VAR}}` placeholders.
-3. **03-implement-credential-vault**: Create a basic (optionally encrypted) local store for frequently used credentials.
+3. **[DONE] 03-implement-credential-vault**: Create a basic (optionally encrypted) local store for frequently used credentials.
 4. **04-implement-log-masking**: Enhance the logging system to redact sensitive information.

@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 import os
 import shutil
-from src.report_manager import ReportManager
+from report_manager import ReportManager
 
 class TestReportManager(unittest.TestCase):
     def setUp(self):

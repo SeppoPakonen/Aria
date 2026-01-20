@@ -1,70 +1,161 @@
 import argparse
 import os
-import google.generativeai as genai
+from google import genai
 import re
 import logging
 from navigator import AriaNavigator
 from script_manager import ScriptManager
 from safety_manager import SafetyManager
-from plugin_manager import PluginManager
+from plugin_manager import PluginManager, BaseAIProvider
 from logger import setup_logging, get_logger, set_trace_id, time_it, get_performance_metrics
 from report_manager import ReportManager
+from credential_manager import CredentialManager
 from exceptions import AriaError
 
 logger = get_logger("aria")
 
 VERSION = "0.1.0"
 
+class GeminiProvider(BaseAIProvider):
+    def generate(self, prompt: str, context: str = "", output_format: str = "text") -> str:
+        cli_path = os.path.expanduser("~/node_modules/.bin/gemini")
+        if os.path.exists(cli_path):
+            return self._generate_via_cli(cli_path, prompt, context, output_format)
+        
+        return self._generate_via_sdk(prompt, context, output_format)
+
+    def _generate_via_cli(self, cli_path, prompt, context, output_format):
+        try:
+            full_prompt = prompt
+            if context:
+                full_prompt = f"Context:\n{context}\n\nUser Request: {prompt}"
+            
+            if output_format == "json":
+                full_prompt += "\n\nIMPORTANT: Return ONLY valid JSON. Do not include markdown code blocks or any other text."
+            elif output_format == "markdown":
+                full_prompt += "\n\nIMPORTANT: Use Markdown formatting."
+
+            import subprocess
+            import json
+            
+            # The user suggested: echo prompt | gemini -y -o stream-json -
+            # Added --model gemini-3-flash-preview
+            cmd = [cli_path, "-y", "--model", "gemini-3-flash-preview", "-o", "stream-json", "-"]
+            
+            process = subprocess.Popen(
+                cmd, 
+                stdin=subprocess.PIPE, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            stdout, stderr = process.communicate(input=full_prompt)
+            
+            if process.returncode != 0:
+                logger.error(f"Gemini CLI error: {stderr}")
+                return f"Error from Gemini CLI: {stderr}"
+
+            # Parse NDJSON output
+            response_text = ""
+            for line in stdout.splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    data = json.loads(line)
+                    if data.get("type") == "message" and data.get("role") == "assistant":
+                        content = data.get("content", "")
+                        response_text += content
+                except json.JSONDecodeError:
+                    pass
+
+            text = response_text.strip()
+            
+            # Cleanup
+            if output_format == "json" and text.startswith("```json"):
+                text = text.replace("```json", "", 1).replace("```", "", 1).strip()
+            elif output_format == "json" and text.startswith("```"):
+                text = text.replace("```", "", 1).replace("```", "", 1).strip()
+
+            return text
+
+        except Exception as e:
+            logger.error(f"Error during Gemini CLI generation: {e}", exc_info=True)
+            return f"Error during Gemini CLI generation: {e}"
+
+    def _generate_via_sdk(self, prompt: str, context: str = "", output_format: str = "text") -> str:
+        try:
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if api_key:
+                genai.configure(api_key=api_key)
+            
+            # If no API key, we assume the environment is already configured (e.g. gcloud auth)
+            # or the user has a local setup that google-generativeai can detect.
+            
+            model = genai.GenerativeModel('gemini-3-flash-preview')
+            
+            full_prompt = prompt
+            if context:
+                full_prompt = f"Context:\n{context}\n\nUser Request: {prompt}"
+            
+            if output_format == "json":
+                full_prompt += "\n\nIMPORTANT: Return ONLY valid JSON. Do not include markdown code blocks or any other text."
+            elif output_format == "markdown":
+                full_prompt += "\n\nIMPORTANT: Use Markdown formatting."
+            
+            response = model.generate_content(full_prompt)
+            text = response.text
+            
+            # Simple cleanup if AI includes markdown code blocks
+            if output_format == "json" and text.startswith("```json"):
+                text = text.replace("```json", "", 1).replace("```", "", 1).strip()
+            elif output_format == "json" and text.startswith("```"):
+                text = text.replace("```", "", 1).replace("```", "", 1).strip()
+                
+            return text
+        except Exception as e:
+            logger.error(f"Error during Gemini generation: {e}", exc_info=True)
+            return f"Error during Gemini generation: {e}. (Hint: Check your GEMINI_API_KEY or local authentication)"
+
 @time_it(logger)
-def generate_ai_response(prompt: str, context: str = "", output_format: str = "text", plugin_manager: PluginManager = None) -> str:
+def generate_ai_response(prompt: str, context: str = "", output_format: str = "text", plugin_manager: PluginManager = None, provider_name: str = None) -> str:
     """Generates a response from the AI given a prompt and optional context."""
     if plugin_manager:
         plugin_manager.trigger_hook("pre_ai_generation", prompt=prompt)
 
-    logger.info(f"Generating AI response. Format: {output_format}", extra={"prompt_length": len(prompt), "context_length": len(context)})
-    try:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            logger.error("GEMINI_API_KEY environment variable not set.")
-            return "Error: GEMINI_API_KEY environment variable not set."
-        
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
-        
-        full_prompt = prompt
-        if context:
-            full_prompt = f"Context:\n{context}\n\nUser Request: {prompt}"
-        
-        if output_format == "json":
-            full_prompt += "\n\nIMPORTANT: Return ONLY valid JSON. Do not include markdown code blocks or any other text."
-        elif output_format == "markdown":
-            full_prompt += "\n\nIMPORTANT: Use Markdown formatting."
-        
-        response = model.generate_content(full_prompt)
-        text = response.text
-        
-        logger.info("AI response generated successfully.", extra={"response_length": len(text)})
-        
-        # Simple cleanup if AI includes markdown code blocks
-        if output_format == "json" and text.startswith("```json"):
-            text = text.replace("```json", "", 1).replace("```", "", 1).strip()
-        elif output_format == "json" and text.startswith("```"):
-            text = text.replace("```", "", 1).replace("```", "", 1).strip()
-            
-        if plugin_manager:
-            plugin_manager.trigger_hook("post_ai_generation", prompt=prompt, response=text)
+    logger.info(f"Generating AI response. Provider: {provider_name}, Format: {output_format}", extra={"prompt_length": len(prompt), "context_length": len(context)})
+    
+    if not provider_name:
+        provider_name = os.environ.get("ARIA_DEFAULT_AI_PROVIDER", "gemini")
 
-        return text
-    except Exception as e:
-        logger.error(f"Error during AI generation: {e}", exc_info=True)
-        return f"Error during AI generation: {e}"
+    provider = None
+    if plugin_manager:
+        provider = plugin_manager.get_ai_provider(provider_name)
+    
+    # Fallback to built-in Gemini if no provider found or no plugin manager
+    if not provider and provider_name == "gemini":
+        provider = GeminiProvider({"version": VERSION}) # Minimal context
 
-def summarize_text(text: str, output_format: str = "text", plugin_manager: PluginManager = None) -> str:
+    if not provider:
+        error_msg = f"Error: AI provider '{provider_name}' not found."
+        logger.error(error_msg)
+        return error_msg
+
+    text = provider.generate(prompt, context, output_format)
+    
+    logger.info("AI response generated successfully.", extra={"response_length": len(text)})
+    
+    if plugin_manager:
+        plugin_manager.trigger_hook("post_ai_generation", prompt=prompt, response=text)
+
+    return text
+
+def summarize_text(text: str, output_format: str = "text", plugin_manager: PluginManager = None, provider_name: str = None) -> str:
     """Summarizes the given text using the Gemini API."""
     prompt = "Summarize the following text:"
     if output_format == "json":
         prompt = "Summarize the following text and return it as valid JSON with keys 'summary', 'key_points' (list), and 'overall_sentiment':"
-    return generate_ai_response(prompt, text, output_format=output_format, plugin_manager=plugin_manager)
+    return generate_ai_response(prompt, text, output_format=output_format, plugin_manager=plugin_manager, provider_name=provider_name)
 
 def safe_navigate(url, navigator, safety_manager, force=False):
     """Navigates to a URL only if it passes the safety check."""
@@ -93,30 +184,34 @@ def _run_cli():
     # Pre-process sys.argv for 'page' command to support 'aria page <id> <cmd>'
     import sys
     
-    # Initialize core managers early to provide context to plugins
-    navigator = AriaNavigator()
+    # Initialize core managers (without navigator yet)
     script_manager = ScriptManager()
     safety_manager = SafetyManager()
     report_manager = ReportManager()
 
-    plugin_manager = PluginManager(context={
-        "navigator": navigator,
+    # Initial context
+    context = {
         "script_manager": script_manager,
         "safety_manager": safety_manager,
         "report_manager": report_manager,
         "version": VERSION
-    })
+    }
+
+    plugin_manager = PluginManager(context=context)
     
-    # Give navigator access to plugin manager for hooks
-    navigator.plugin_manager = plugin_manager
-    
+    # We must load plugins BEFORE we can use custom navigators or AI providers
     plugin_manager.load_plugins()
 
+    # Register default Gemini provider if not present (allows Navigator to use it)
+    if "gemini" not in plugin_manager.list_ai_providers():
+        plugin_manager.ai_providers["gemini"] = GeminiProvider({"version": VERSION})
+        logger.info("Registered default GeminiProvider as 'gemini'.")
+
     if len(sys.argv) > 2 and sys.argv[1] == 'page':
-        if sys.argv[2] not in ['new', 'list', 'goto', 'summarize', 'tag', 'export', '-h', '--help']:
+        if sys.argv[2] not in ['new', 'list', 'goto', 'interact', 'summarize', 'tag', 'export', '-h', '--help']:
             # Assume sys.argv[2] is an identifier
-            # If sys.argv[3] is 'goto', 'summarize', 'tag', or 'export', swap them
-            if len(sys.argv) > 3 and sys.argv[3] in ['goto', 'summarize', 'tag', 'export']:
+            # If sys.argv[3] is 'goto', 'interact', 'summarize', 'tag', 'export', swap them
+            if len(sys.argv) > 3 and sys.argv[3] in ['goto', 'interact', 'summarize', 'tag', 'export']:
                 ident = sys.argv.pop(2)
                 sys.argv.insert(3, ident)
 
@@ -140,14 +235,21 @@ def _run_cli():
     parser.add_argument('--trace-id', type=str, help='Optional trace ID for this execution.')
     parser.add_argument('--force', action='store_true', help='Force actions and bypass safety warnings.')
     parser.add_argument('--slow-mo', type=float, default=0.0, help='Add a delay in seconds between browser actions.')
+    parser.add_argument('--provider', type=str, help='The AI provider to use for generation.')
+    parser.add_argument('--navigator', type=str, default='aria', help='The navigator engine to use.')
+    parser.add_argument('-v', '--version', action='store_true', help='Show version information.')
     
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=False)
+
+    # Define the 'help' command
+    subparsers.add_parser('help', help='Show this help message and exit.')
 
     # Define the 'open' command
     parser_open = subparsers.add_parser('open', help='Open a browser instance.')
     parser_open.add_argument('url', type=str, nargs='?', help='Optional URL to navigate to.')
     parser_open.add_argument('--headless', action='store_true', help='Run the browser in headless mode.')
-    parser_open.add_argument('--browser', type=str, default='chrome', choices=['chrome', 'firefox', 'edge'], help='The browser to use.')
+    parser_open.add_argument('--browser', type=str, default='firefox', choices=['chrome', 'firefox', 'edge'], help='The browser to use.')
+    parser_open.add_argument('--profile', type=str, help='The name or path of the browser profile to use (Firefox only).')
     parser_open.add_argument('--scope', type=str, default='web', choices=['web', 'bookmarks', 'local'], help='The scope of the resource to open.')
 
     # Define the 'close' command
@@ -172,6 +274,14 @@ def _run_cli():
     parser_page_goto.add_argument('--url', type=str, help='Navigate the tab to this URL.')
     parser_page_goto.add_argument('--prompt', type=str, help='Navigate using a prompt (not fully implemented).')
     parser_page_goto.add_argument('--scope', type=str, default='web', choices=['web', 'bookmarks'], help='Scope for navigation.')
+    parser_page_goto.add_argument('--search', action='store_true', help='Perform an AI-driven search.')
+    parser_page_goto.add_argument('--first-result', action='store_true', help='Automatically click the first result (implied by --search).')
+    parser_page_goto.add_argument('--prompt-result', type=str, help='Prompt to interact with the search results page.')
+    parser_page_goto.add_argument('--tries', type=int, default=5, help='Maximum number of results pages to search through.')
+
+    parser_page_interact = page_subparsers.add_parser('interact', help='Interact with the page using AI.')
+    parser_page_interact.add_argument('identifier', type=str, nargs='?', help='The index (0-based), ID or title of the page.')
+    parser_page_interact.add_argument('prompt', type=str, help='Instruction for interaction (e.g. "Click the login button").')
 
     parser_page_summarize = page_subparsers.add_parser('summarize', help='Summarize a page.')
     parser_page_summarize.add_argument('identifier', type=str, nargs='?', help='The index (0-based), ID or title of the page.')
@@ -229,7 +339,25 @@ def _run_cli():
     subparsers.add_parser('diag', help='Show diagnostic information.')
 
     # Define the 'settings' command
-    subparsers.add_parser('settings', help='Show current configuration.')
+    parser_settings = subparsers.add_parser('settings', help='Show current configuration.')
+    settings_subparsers = parser_settings.add_subparsers(dest="settings_command")
+    
+    parser_settings_credentials = settings_subparsers.add_parser('credentials', help='Manage stored credentials.')
+    cred_subparsers = parser_settings_credentials.add_subparsers(dest="cred_command")
+    
+    parser_cred_set = cred_subparsers.add_parser('set', help='Set a credential.')
+    parser_cred_set.add_argument('key', type=str, help='The name of the credential.')
+    parser_cred_set.add_argument('value', type=str, nargs='?', help='The value of the credential. If omitted, you will be prompted.')
+    
+    cred_subparsers.add_parser('list', help='List all stored credential keys.')
+    
+    parser_cred_remove = cred_subparsers.add_parser('remove', help='Remove a stored credential.')
+    parser_cred_remove.add_argument('key', type=str, help='The name of the credential to remove.')
+
+    settings_subparsers.add_parser('cleanup', help='Clean up stale session files and orphaned driver processes.')
+
+    parser_settings_export = settings_subparsers.add_parser('export-artifacts', help='Package and export execution artifacts (logs, reports).')
+    parser_settings_export.add_argument('--path', type=str, help='Output path for the archive (e.g., run-artifacts.zip).')
 
     # Define the 'man' command
     subparsers.add_parser('man', help='Show manual pages.')
@@ -254,6 +382,34 @@ def _run_cli():
         p.set_defaults(func=cmd_def['callback'])
 
     args = parser.parse_args()
+
+    if args.version:
+        print(f"aria CLI version {VERSION}")
+        return
+
+    if not args.command or args.command == 'help':
+        parser.print_help()
+        return
+
+    if args.force:
+        os.environ["ARIA_NON_INTERACTIVE"] = "true"
+
+    # Instantiate the selected navigator
+    nav_name = args.navigator
+    nav_class = plugin_manager.get_navigator(nav_name)
+    
+    if not nav_class:
+        if nav_name == 'aria':
+            nav_class = AriaNavigator
+        else:
+            print(f"Error: Navigator '{nav_name}' not found. Falling back to 'aria'.")
+            nav_class = AriaNavigator
+            
+    navigator = nav_class()
+    navigator.plugin_manager = plugin_manager
+    
+    # Update plugin context with the final navigator
+    plugin_manager.context["navigator"] = navigator
     
     # Set unique trace ID for this command execution
     trace_id = set_trace_id(args.trace_id)
@@ -297,7 +453,7 @@ def _run_cli():
             url_to_navigate = None
 
         if args.scope == 'web':
-            if navigator.start_session(browser_name=browser_to_open, headless=args.headless):
+            if navigator.start_session(browser_name=browser_to_open, headless=args.headless, profile=args.profile):
                 if url_to_navigate:
                     safe_navigate(url_to_navigate, navigator, safety_manager, force=args.force)
         else:
@@ -307,7 +463,51 @@ def _run_cli():
     elif args.command == 'page':
         if args.page_command == 'new':
             if args.scope == 'local':
-                print(f"Local scope for 'page new' ('{args.prompt}') is not yet implemented.")
+                if not args.prompt:
+                    print("Error: Prompt is required for 'local' scope.")
+                    return
+                
+                print(f"Generating local content for: {args.prompt}")
+                
+                # Check if it looks like a file system query
+                is_fs_query = any(word in args.prompt.lower() for word in ['find', 'list', 'search', 'files', 'directory', 'disk', 'size'])
+                
+                if is_fs_query:
+                    # Use AI to generate a safe shell command
+                    system_context = f"Operating System: {os.name}, Platform: {sys.platform}"
+                    cmd_prompt = f"Convert the following request into a single safe shell command. {system_context}\nRequest: {args.prompt}\n\nReturn ONLY the command, no markdown, no explanation."
+                    command = generate_ai_response(cmd_prompt, provider_name=args.provider).strip()
+                    
+                    # Basic safety check for generated command
+                    forbidden = [';', '&&', '||', '|', '>', 'rm ', 'rf ', 'format', 'mkfs', 'dd ']
+                    # We allow some pipes if they are simple, but let's be conservative
+                    if any(f in command for f in forbidden if f != '|') or '..' in command:
+                        print(f"Safety Check Failed: Generated command looks potentially unsafe: {command}")
+                        if not args.force and not safety_manager.confirm("Do you want to run it anyway?"):
+                            return
+
+                    import subprocess
+                    try:
+                        print(f"Running command: {command}")
+                        result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=10)
+                        content = f"<h2>Local Command Results</h2><p>Command: <code>{command}</code></p><pre>{result.stdout}\n{result.stderr}</pre>"
+                    except Exception as e:
+                        content = f"<h2>Error Running Local Command</h2><pre>{str(e)}</pre>"
+                else:
+                    # Just generate general HTML content
+                    gen_prompt = f"Generate a standalone HTML page (body content only) based on this request: {args.prompt}"
+                    content = generate_ai_response(gen_prompt, provider_name=args.provider)
+
+                # Create temp file and open it
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode='w', encoding='utf-8') as f:
+                    f.write(f"<html><head><title>Aria Local Page</title><style>body{{font-family:sans-serif;padding:20px;}}pre{{background:#f0f0f0;padding:10px;}}</style></head><body>{content}</body></html>")
+                    temp_path = f.name
+                
+                file_url = f"file://{os.path.abspath(temp_path)}"
+                if navigator.start_session(browser_name=args.browser, headless=args.headless):
+                    navigator.new_tab(file_url)
+                    print(f"Opened local results page: {file_url}")
                 return
 
             url = args.url_opt or args.url
@@ -319,7 +519,7 @@ def _run_cli():
                 refined_prompt, context = navigator.resolve_prompt(args.prompt)
                 if context:
                     print("Synthesizing information across tabs...")
-                    result = generate_ai_response(refined_prompt, context, output_format=args.format, plugin_manager=plugin_manager)
+                    result = generate_ai_response(refined_prompt, context, output_format=args.format, plugin_manager=plugin_manager, provider_name=args.provider)
                     print(result)
                 else:
                     if safety_manager.check_url_safety(args.prompt, force=args.force):
@@ -350,8 +550,121 @@ def _run_cli():
                     print(f"Error: Could not switch to page '{identifier}'.")
                     return
             
+            if args.search:
+                if not args.prompt:
+                    print("Error: --prompt is required when using --search.")
+                    return
+                
+                print(f"Planning search for: '{args.prompt}'...")
+                ai_query = (
+                    f"The user wants to search for: '{args.prompt}'.\n"
+                    "1. Select the most appropriate search engine for this query (e.g., Google for general, YouTube for video, GitHub for code, etc.).\n"
+                    "2. Construct the full URL for the search results page.\n"
+                    "Return ONLY a JSON object: {\"url\": \"...\", \"engine\": \"...\"}"
+                )
+                
+                response = generate_ai_response(ai_query, plugin_manager=plugin_manager, provider_name=args.provider, output_format="json")
+                try:
+                    import json
+                    data = json.loads(response)
+                    target_url = data.get("url")
+                    
+                    if target_url:
+                        print(f"AI selected search engine: {data.get('engine', 'unknown')}")
+                        print(f"Navigating to results: {target_url}")
+                        if not safe_navigate(target_url, navigator, safety_manager, force=args.force):
+                            return
+
+                        # Result Evaluation Loop
+                        interaction_prompt = args.prompt_result or "the first relevant result"
+                        max_pages = args.tries
+                        
+                        for page_num in range(1, max_pages + 1):
+                            print(f"\n--- Analyzing Results Page {page_num} ---")
+                            import time
+                            time.sleep(3) # Wait for results to render
+                            
+                            links = navigator.extract_links()
+                            if not links:
+                                print("No links found on the page.")
+                                break
+                                
+                            context_str = json.dumps(links, indent=2)
+                            eval_query = (
+                                f"You are analyzing a page of search results. The user is looking for: '{interaction_prompt}'.\n\n"
+                                f"Current Page Links:\n{context_str}\n\n"
+                                "Instructions:\n"
+                                "1. If a link clearly matches what the user is looking for, return: {\"url\": \"THE_LINK_URL\"}.\n"
+                                "2. If NO link matches but there is a 'Next', 'More', or page number link to see more results, return: {\"next_page_url\": \"THE_NEXT_PAGE_URL\"}.\n"
+                                "3. If no match is found and no next page is available, return: {\"error\": \"Not found\"}.\n"
+                                "Return ONLY valid JSON."
+                            )
+                            
+                            print("Evaluating search results with AI...")
+                            eval_response = generate_ai_response(eval_query, plugin_manager=plugin_manager, provider_name=args.provider, output_format="json")
+                            
+                            try:
+                                # Simple cleanup if AI includes markdown code blocks
+                                if eval_response.startswith("```"):
+                                    eval_response = eval_response.split("\n", 1)[1].rsplit("\n", 1)[0]
+                                
+                                eval_data = json.loads(eval_response)
+                                
+                                if "url" in eval_data:
+                                    final_url = eval_data["url"]
+                                    print(f"AI found matching result: {final_url}")
+                                    navigator.navigate(final_url)
+                                    return
+                                elif "next_page_url" in eval_data:
+                                    next_url = eval_data["next_page_url"]
+                                    print(f"AI did not find match on this page. Navigating to next page: {next_url}")
+                                    navigator.navigate(next_url)
+                                    # Continue loop to next page
+                                elif "error" in eval_data:
+                                    print(f"AI could not find a match: {eval_data['error']}")
+                                    break
+                                else:
+                                    print("AI returned unrecognized response format.")
+                                    break
+                            except Exception as e:
+                                print(f"Error parsing AI evaluation: {e}")
+                                break
+                        
+                        print("Search completed without finding a definitive match.")
+                        return
+                except Exception as e:
+                    print(f"Search planning failed: {e}. Falling back to default search.")
+                    # Fallback to duckduckgo handled below via args.prompt logic if we don't return
+
             if args.scope == 'bookmarks':
-                print(f"Bookmarks scope for 'page goto' ('{args.prompt}') is not yet implemented.")
+                if not args.prompt:
+                    print("Error: Prompt is required for 'bookmarks' scope.")
+                    return
+                
+                aria_dir = os.path.join(os.path.expanduser("~"), ".aria")
+                bookmarks_file = os.path.join(aria_dir, "bookmarks.json")
+                
+                if not os.path.exists(bookmarks_file):
+                    print(f"Bookmarks scope: No bookmarks found. Create '{bookmarks_file}' to use this feature.")
+                    print("Example format: [{\"title\": \"Example\", \"url\": \"https://example.com\"}]")
+                    return
+                
+                try:
+                    with open(bookmarks_file, 'r') as f:
+                        bookmarks = json.load(f)
+                    
+                    # Use AI to find the best match
+                    bm_context = json.dumps(bookmarks[:50]) # Limit context
+                    find_prompt = f"From the following list of bookmarks, find the one that best matches the request: '{args.prompt}'\n\nBookmarks: {bm_context}\n\nReturn ONLY the URL of the best match, or 'NONE' if no good match is found."
+                    match_url = generate_ai_response(find_prompt, provider_name=args.provider).strip()
+                    
+                    if match_url != "NONE" and (match_url.startswith("http") or match_url.startswith("file")):
+                        print(f"Found matching bookmark: {match_url}")
+                        safe_navigate(match_url, navigator, safety_manager, force=args.force)
+                    else:
+                        print(f"No matching bookmark found for: {args.prompt}")
+                except Exception as e:
+                    print(f"Error reading bookmarks: {e}")
                 return
 
             if args.url:
@@ -363,6 +676,19 @@ def _run_cli():
                 print(f"Switched to page '{args.identifier}'.")
             else:
                 print("Error: Identifier, URL, or prompt required for 'page goto'.")
+
+        elif args.page_command == 'interact':
+            if args.identifier:
+                identifier = args.identifier
+                try:
+                    identifier = int(identifier)
+                except ValueError:
+                    pass
+                if not navigator.goto_tab(identifier):
+                    print(f"Error: Could not switch to page '{identifier}'.")
+                    return
+            
+            navigator.navigate_with_prompt(args.prompt)
 
         elif args.page_command == 'tag':
             if not navigator.tag_tab(args.identifier, args.tag):
@@ -413,7 +739,7 @@ def _run_cli():
                 refined_prompt, context = navigator.resolve_prompt(args.prompt)
                 if context:
                     print("Synthesizing information across tabs for summary...")
-                    result = generate_ai_response(refined_prompt, context, output_format=args.format, plugin_manager=plugin_manager)
+                    result = generate_ai_response(refined_prompt, context, output_format=args.format, plugin_manager=plugin_manager, provider_name=args.provider)
                     print(result)
                     if args.report:
                         metrics = get_performance_metrics()
@@ -437,7 +763,7 @@ def _run_cli():
             content = navigator.get_page_content()
             if content:
                 prompt = args.prompt or "Summarize the following text:"
-                summary = summarize_text(f"{prompt}\n\n{content}", output_format=args.format, plugin_manager=plugin_manager)
+                summary = summarize_text(f"{prompt}\n\n{content}", output_format=args.format, plugin_manager=plugin_manager, provider_name=args.provider)
                 print(summary)
                 if args.report:
                     metrics = get_performance_metrics()
@@ -517,7 +843,7 @@ def _run_cli():
         if args.report_command == 'generate':
             refined_prompt, context = navigator.resolve_prompt(args.prompt)
             print("Generating report content...")
-            result = generate_ai_response(refined_prompt, context, plugin_manager=plugin_manager)
+            result = generate_ai_response(refined_prompt, context, plugin_manager=plugin_manager, provider_name=args.provider)
             title = args.title or "General Report"
             metrics = get_performance_metrics()
             if args.format == 'html':
@@ -526,7 +852,6 @@ def _run_cli():
                 path = report_manager.generate_markdown_report(title, result, sources=navigator.list_active_browsers(), metrics=metrics)
             print(f"Report generated: {path}")
         elif args.report_command == 'list':
-            import os
             reports_dir = report_manager.reports_dir
             if os.path.exists(reports_dir):
                 files = [f for f in os.listdir(reports_dir) if f.endswith((".md", ".html"))]
@@ -567,38 +892,151 @@ def _run_cli():
         else:
             print("\nLog file not found.")
     elif args.command == 'settings':
-        aria_dir = os.path.join(os.path.expanduser("~"), ".aria")
-        print(f"Aria Configuration:")
-        print(f"  Aria Home: {aria_dir}")
-        print(f"  Scripts Directory: {os.path.join(aria_dir, 'scripts')}")
-        print(f"  Plugins Directory: {os.path.join(aria_dir, 'plugins')}")
-        print(f"  Current Browser: {navigator._get_current_browser()}")
-        print(f"  Active Browsers: {', '.join(navigator.list_active_browsers())}")
+        if args.settings_command == 'credentials':
+            cm = CredentialManager()
+            if args.cred_command == 'set':
+                key = args.key
+                value = args.value
+                if not value:
+                    import getpass
+                    value = getpass.getpass(f"Enter value for '{key}': ")
+                cm.set_credential(key, value)
+                print(f"Credential '{key}' set successfully.")
+            elif args.cred_command == 'list':
+                keys = cm.list_keys()
+                if keys:
+                    print("Stored Credentials (keys only):")
+                    for k in keys:
+                        print(f"- {k}")
+                else:
+                    print("No credentials stored.")
+            elif args.cred_command == 'remove':
+                if cm.remove_credential(args.key):
+                    print(f"Credential '{args.key}' removed successfully.")
+                else:
+                    print(f"Error: Credential '{args.key}' not found.")
+            else:
+                parser_settings_credentials.print_help()
+        elif args.settings_command == 'cleanup':
+            count = navigator.cleanup_orphaned_sessions()
+            print(f"Cleanup complete. Removed {count} stale session(s).")
+        elif args.settings_command == 'export-artifacts':
+            import shutil
+            import tempfile
+            from datetime import datetime
+            
+            aria_dir = os.path.join(os.path.expanduser("~"), ".aria")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_path = f"aria_artifacts_{timestamp}"
+            output_path = args.path or default_path
+            
+            # Use a temp directory to collect files safely
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Copy logs
+                log_file = os.path.join(aria_dir, "aria.log")
+                if os.path.exists(log_file):
+                    shutil.copy2(log_file, tmpdir)
+                
+                # Copy reports
+                reports_dir = os.path.join(aria_dir, "reports")
+                if os.path.exists(reports_dir):
+                    shutil.copytree(reports_dir, os.path.join(tmpdir, "reports"), dirs_exist_ok=True)
+                
+                # Copy metadata (not credentials)
+                scripts_dir = os.path.join(aria_dir, "scripts")
+                if os.path.exists(scripts_dir):
+                    # Only copy metadata.json, not the whole dir if there are local scripts
+                    meta = os.path.join(scripts_dir, "metadata.json")
+                    if os.path.exists(meta):
+                        os.makedirs(os.path.join(tmpdir, "scripts"), exist_ok=True)
+                        shutil.copy2(meta, os.path.join(tmpdir, "scripts"))
+                
+                # Make archive
+                # shutil.make_archive appends extension if not present
+                base_name = output_path
+                if base_name.endswith('.zip'):
+                    base_name = base_name[:-4]
+                
+                final_path = shutil.make_archive(base_name, 'zip', tmpdir)
+                print(f"Artifacts exported to: {final_path}")
+        else:
+            aria_dir = os.path.join(os.path.expanduser("~"), ".aria")
+            print(f"Aria Configuration:")
+            print(f"  Aria Home:         {aria_dir}")
+            print(f"  Scripts Directory: {os.path.join(aria_dir, 'scripts')}")
+            print(f"  Plugins Directory: {os.path.join(aria_dir, 'plugins')}")
+            print(f"  Default Provider:  {os.environ.get('ARIA_DEFAULT_AI_PROVIDER', 'gemini')}")
+            print(f"  Log Level:         {logging.getLevelName(logger.getEffectiveLevel())}")
+            print(f"  Current Browser:   {navigator._get_current_browser()}")
+            print(f"  Active Browsers:   {', '.join(navigator.list_active_browsers())}")
+            print(f"  Non-Interactive:   {os.environ.get('ARIA_NON_INTERACTIVE', 'false')}")
+
     elif args.command == 'man':
-        print("Aria Manual Pages")
-        print("================")
-        print("\nAria is an AI-driven web automation assistant.")
-        print("\nCommands:")
-        print("  open [browser]   - Start a browser session.")
-        print("  close [browser]  - Close browser session(s).")
-        print("  page list        - List open tabs.")
-        print("  page new --url U - Open a new tab.")
-        print("  page <id> goto   - Navigate a tab.")
-        print("  script list      - List saved scripts.")
-        print("  script run <id>  - Execute a saved script.")
-        print("  security         - Show security best practices.")
-        print("\nOptions:")
-        print("  --slow-mo SEC    - Add delay between actions.")
-        print("  --force          - Bypass safety warnings.")
-        print("\nSee runbooks in docs/runbooks/ for full details.")
+        print("ARIA(1)                          Aria User Manual                         ARIA(1)")
+        print("\nNAME")
+        print("    aria - AI-driven web automation assistant")
+        print("\nSYNOPSIS")
+        print("    aria [GLOBAL_OPTIONS] COMMAND [ARGS...]")
+        print("\nDESCRIPTION")
+        print("    Aria is a powerful CLI tool that leverages AI to automate web browsing tasks.")
+        print("    It manages browser sessions, tabs (pages), and reusable automation scripts.")
+        print("\nGLOBAL OPTIONS")
+        print("    --force          Bypass safety warnings and run in non-interactive mode.")
+        print("    --slow-mo SEC    Add a delay (in seconds) between browser actions.")
+        print("    --navigator NAV  Select navigator engine (default: 'aria').")
+        print("    --provider PROV  Select AI provider (default: 'gemini').")
+        print("    --log-level LVL  Set logging verbosity (DEBUG, INFO, WARNING, ERROR).")
+        print("\nCOMMANDS")
+        print("    open [URL] [--browser B] [--headless]")
+        print("        Open a browser instance. B can be 'chrome', 'firefox', or 'edge'.")
+        print("\n    close [BROWSER]")
+        print("        Close browser instances. If BROWSER is omitted, closes all.")
+        print("\n    page list")
+        print("        List all open tabs with their indices and persistent IDs.")
+        print("\n    page new [--url URL] [--prompt PROMPT]")
+        print("        Open a new tab. Can navigate directly or generate content via prompt.")
+        print("\n    page <id> goto [--url URL] [--prompt PROMPT] [--search] [--first-result] [--prompt-result P]")
+        print("        Navigate an existing tab. Use --search for AI-driven navigation.")
+        print("        --first-result clicks the first search result automatically.")
+        print("        --prompt-result P uses P to interact with the landing page.")
+        print("\n    page <id> interact PROMPT")
+        print("        Interact with the page using natural language (e.g., 'Click login').")
+        print("\n    page <id> summarize [PROMPT]")
+        print("        Summarize the content of a tab using AI.")
+        print("\n    script run <id> [--param name=value]")
+        print("        Execute a saved script. Supports parameter injection.")
+        print("\n    settings export-artifacts [--path PATH]")
+        print("        Package logs and reports into a ZIP archive for CI/CD collection.")
+        print("\n    security")
+        print("        Display security best practices for web automation.")
+        print("\nFILES")
+        print(f"    ~/.aria/         Home directory for configuration, scripts, and logs.")
+        print(f"    ~/.aria/aria.log Application logs.")
+        print("\nSEE ALSO")
+        print("    For full documentation and recipes, see the 'docs/' directory in the source.")
+
     elif args.command == 'tutorial':
-        print("Welcome to the Aria Tutorial!")
-        print("1. Start by opening a browser: 'aria open chrome'")
-        print("2. Navigate to a site: 'aria page new --url https://google.com'")
-        print("3. List your tabs: 'aria page list'")
-        print("4. Summarize a page: 'aria page 0 summarize'")
-        print("5. Create a script: 'aria script new --prompt \"my search\"'")
-        print("\nHappy automating!")
+        print("=== WELCOME TO THE ARIA TUTORIAL ===")
+        print("\nAria helps you automate the web using natural language.")
+        print("\nSTEP 1: Open a browser")
+        print("    Run: aria open chrome")
+        print("    (Or 'firefox' if you prefer)")
+        print("\nSTEP 2: Navigate to a website")
+        print("    Run: aria page new --url https://news.ycombinator.com")
+        print("\nSTEP 3: See your active tabs")
+        print("    Run: aria page list")
+        print("    Note the index (0) and the unique ID in parentheses.")
+        print("\nSTEP 4: Use AI to understand the page")
+        print("    Run: aria page 0 summarize \"What are the top 3 stories?\"")
+        print("\nSTEP 5: Create a reusable script")
+        print("    Run: aria script new --prompt \"Search for {{query}} on Google\" --name search")
+        print("\nSTEP 6: Run your script")
+        print("    Run: aria script run search --param query=\"Aria automation\"")
+        print("\nSTEP 7: Export your work")
+        print("    Run: aria settings export-artifacts")
+        print("\nPRO TIP: Use '--force' in CI/CD environments to bypass all prompts.")
+        print("\nType 'aria man' for the full manual or 'aria help' for quick syntax.")
+
     elif args.command == 'version':
         print(f"aria CLI version {VERSION}")
     elif args.command == 'security':

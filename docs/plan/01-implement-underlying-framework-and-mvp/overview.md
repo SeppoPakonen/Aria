@@ -28,16 +28,16 @@ Establish the foundational CLI structure, core command parsing, and the initial 
 
 ## Phases
 
-| ID | Name                                      | Objective                                                                     | Link                                                                                    | Status   |
-|----|-------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|----------|
-| 01 | Project Scaffolding                       | Set up repository, CLI framework, and basic commands.                         | [Overview](./01-project-scaffolding/overview.md)                                        | Planned  |
-| 02 | Browser Lifecycle                         | Implement reliable browser opening and closing.                               | [Overview](./02-browser-lifecycle/overview.md)                                          | Planned  |
-| 03 | Page Navigation & Information Retrieval   | Develop core `page` commands for navigation and content summarization.        | [Overview](./03-page-navigation-information-retrieval/overview.md)                    | Planned  |
-| 04 | Scope Management                          | Define and implement handling for different browsing scopes.                  | [Overview](./04-scope-management/overview.md)                                           | Planned  |
-| 05 | Script Management Fundamentals            | Enable creation, listing, editing, and removal of user scripts.               | [Overview](./05-script-management-fundamentals/overview.md)                           | Planned  |
-| 06 | CLI Safety and User Feedback              | Implement warnings, confirmations, and clear error messages.                  | [Overview](./06-cli-safety-user-feedback/overview.md)                                 | Planned  |
-| 07 | Logging and Basic Diagnostics             | Set up foundational logging and initial troubleshooting outputs.              | [Overview](./07-logging-basic-diagnostics/overview.md)                                | Planned  |
-| 08 | Runbook Alignment and Validation          | Ensure all `aria` runbook examples are functional and accurate.               | [Overview](./08-runbook-alignment-validation/overview.md)                             | Planned  |
+| ID | Name                                      | Objective                                                                     | Link                                                                                    | Status      |
+|----|-------------------------------------------|-------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------|-------------|
+| 01 | Project Scaffolding                       | Set up repository, CLI framework, and basic commands.                         | [Overview](./01-project-scaffolding/overview.md)                                        | Completed   |
+| 02 | Browser Lifecycle                         | Implement reliable browser opening and closing.                               | [Overview](./02-browser-lifecycle/overview.md)                                          | Completed   |
+| 03 | Page Navigation & Information Retrieval   | Develop core `page` commands for navigation and content summarization.        | [Overview](./03-page-navigation-information-retrieval/overview.md)                    | Completed   |
+| 04 | Scope Management                          | Define and implement handling for different browsing scopes.                  | [Overview](./04-scope-management/overview.md)                                           | Completed   |
+| 05 | Script Management Fundamentals            | Enable creation, listing, editing, and removal of user scripts.               | [Overview](./05-script-management-fundamentals/overview.md)                           | Completed   |
+| 06 | CLI Safety and User Feedback              | Implement warnings, confirmations, and clear error messages.                  | [Overview](./06-cli-safety-user-feedback/overview.md)                                 | Completed   |
+| 07 | Logging and Basic Diagnostics             | Set up foundational logging and initial troubleshooting outputs.              | [Overview](./07-logging-basic-diagnostics/overview.md)                                | Completed   |
+| 08 | Runbook Alignment and Validation          | Ensure all `aria` runbook examples are functional and accurate.               | [Overview](./08-runbook-alignment-validation/overview.md)                             | Completed   |
 
 ## Runbook Alignment
 This track directly implements the core functionalities documented in the `aria` CLI runbooks. Specifically:
