@@ -1,6 +1,7 @@
 selenium
 webdriver-manager
 google-genai
+beautifulsoup4
 # openai  # Uncomment if using OpenAI
 # anthropic # Uncomment if using Anthropic
 # python-dotenv

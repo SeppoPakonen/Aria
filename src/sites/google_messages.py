@@ -54,7 +54,6 @@ class GoogleMessagesScraper:
     def scrape_all_conversations(self):
         """Iterates through all conversations and scrapes their content."""
         # 1. Get initial list of conversation elements
-        # We use a broader selector for the conversation items
         items = self.navigator.driver.find_elements(By.CSS_SELECTOR, "mws-conversation-list-item")
         print(f"Found {len(items)} conversation threads.")
         
@@ -67,13 +66,14 @@ class GoogleMessagesScraper:
             
             item = items[i]
             try:
-                # Get conversation name/title
-                name = item.find_element(By.CSS_SELECTOR, ".name-container").text.strip()
+                # Get conversation name
+                name = item.find_element(By.CSS_SELECTOR, "[data-e2e-conversation-name]").text.strip()
                 print(f"Scraping conversation: {name}")
                 
-                # Click the conversation to load messages
-                item.click()
-                time.sleep(2) # Wait for messages to load
+                # Click the internal 'a' link via JS to ensure thread loads
+                link = item.find_element(By.TAG_NAME, "a")
+                self.navigator.driver.execute_script("arguments[0].click();", link)
+                time.sleep(3) # Wait for messages to load
                 
                 # Extract messages
                 messages = self.extract_visible_messages()
@@ -98,45 +98,47 @@ class GoogleMessagesScraper:
         return all_data
 
     def extract_visible_messages(self):
-        """Extracts messages from the currently open conversation thread."""
+        """Extracts messages from the currently open conversation thread using confirmed tags."""
+        from bs4 import BeautifulSoup
         messages = []
         try:
-            # Look for message elements
-            msg_elements = self.navigator.driver.find_elements(By.CSS_SELECTOR, "mws-message-wrapper")
-            for msg_el in msg_elements:
+            # Get the page source
+            soup = BeautifulSoup(self.navigator.driver.page_source, 'html.parser')
+            
+            # Find message wrappers
+            msg_wrappers = soup.find_all("mws-message-wrapper")
+            
+            for wrapper in msg_wrappers:
                 try:
                     # Identify sender
-                    is_outgoing = "outgoing" in msg_el.get_attribute("class")
+                    classes = wrapper.get("class", [])
+                    is_outgoing = "outgoing" in classes
                     
-                    # 1. Extract Text
-                    text = ""
-                    try:
-                        text = msg_el.find_element(By.CSS_SELECTOR, ".text-msg").text.strip()
-                    except:
-                        pass
+                    # 1. Extract Text from mws-text-message-part
+                    text_el = wrapper.select_one("mws-text-message-part")
+                    text = text_el.get_text(strip=True) if text_el else ""
                     
                     # 2. Extract Media
-                    media_info = self.extract_media(msg_el)
+                    media_info = []
+                    img_els = wrapper.select("img")
+                    for img in img_els:
+                        src = img.get("src")
+                        if src and not src.startswith("data:"):
+                            media_info.append({"type": "image", "url": src})
                     
                     # 3. Extract Timestamp
-                    try:
-                        timestamp = msg_el.find_element(By.CSS_SELECTOR, ".timestamp").text.strip()
-                    except:
-                        timestamp = "Unknown"
-                    
-                    msg_data = {
-                        "text": text,
-                        "timestamp": timestamp,
-                        "type": "sent" if is_outgoing else "received"
-                    }
-                    
-                    if media_info:
-                        msg_data["media"] = media_info
+                    ts_el = wrapper.select_one("mws-relative-timestamp")
+                    timestamp = ts_el.get_text(strip=True) if ts_el else "Unknown"
                     
                     if text or media_info:
-                        messages.append(msg_data)
-                except:
-                    pass
+                        messages.append({
+                            "text": text,
+                            "timestamp": timestamp,
+                            "type": "sent" if is_outgoing else "received",
+                            "media": media_info
+                        })
+                except Exception as e:
+                    continue
         except Exception as e:
             logger.error(f"Error extracting messages: {e}")
             

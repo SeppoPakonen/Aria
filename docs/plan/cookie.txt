@@ -3,10 +3,10 @@
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 02-google-messages-integration
-- **Task**: 03-media-downloader
-- **Final Alignment**: Implemented media detection (images/videos) and downloading logic in GoogleMessagesScraper, saving files to the local media/ directory.
+- **Task**: 04-implement-show-recent
+- **Final Alignment**: Verified HTML structure for Google Messages using custom mw/mws tags. Updated scraper to use verified selectors and JS-based clicking for reliable thread loading. Refined 'site show' to display real message data.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
-- **Phase**: 02-google-messages-integration
-- **Task**: 04-implement-show-recent
+- **Phase**: 03-whatsapp-and-threads-integration
+- **Task**: 01-whatsapp-navigation-and-scraping

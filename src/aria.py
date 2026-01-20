@@ -906,15 +906,17 @@ def _run_cli():
                 print(f"Refresh logic for site '{site_name}' is not yet implemented.")
                 return
 
+            browser_name = getattr(args, 'browser', 'firefox')
+            
             # Try to find existing tab first
             found = False
-            if navigator.connect_to_session(browser_name=args.browser):
+            if navigator.connect_to_session(browser_name=browser_name):
                 if navigator.find_tab_by_url(target_url):
                     print(f"Found existing tab for {site_name}. Reusing it.")
                     found = True
             
             if not found:
-                if not navigator.start_session(browser_name=args.browser, headless=args.headless, profile=args.profile):
+                if not navigator.start_session(browser_name=browser_name, headless=args.headless, profile=args.profile):
                     print(f"Failed to start session for {site_name}.")
                     return
                 # Check again in the new session just in case
@@ -933,18 +935,42 @@ def _run_cli():
                 print(f"Scraper for '{site_name}' is not yet fully implemented.")
         elif args.site_command == 'show':
             site_name = args.site_name
-            if args.data_type == 'recent':
-                # This is a generic "show recent" - in reality, sites will have specific filenames
-                # For now, we'll look for common filenames like conversations.json or events.json
+            if site_name == "google-messages" and args.data_type == 'recent':
+                # Custom logic for Google Messages: Look into convo_*.json files
+                site_dir = sm.get_site_dir(site_name)
+                files = [f for f in os.listdir(site_dir) if f.startswith("convo_") and f.endswith(".json")]
+                
+                recent_messages = []
+                for f in files:
+                    data = sm.load_data(site_name, f)
+                    if data and "messages" in data and data["messages"]:
+                        # Get last message from each conversation
+                        last_msg = data["messages"][-1]
+                        recent_messages.append({
+                            "conversation": data.get("name", "Unknown"),
+                            "text": last_msg.get("text", "[Media]"),
+                            "timestamp": last_msg.get("timestamp", ""),
+                            "type": last_msg.get("type", "")
+                        })
+                
+                if recent_messages:
+                    # Sort by some heuristic or just show the list
+                    print(f"Recent messages from {site_name}:")
+                    for msg in recent_messages[:10]:
+                        prefix = ">>" if msg["type"] == "sent" else "<<"
+                        print(f"[{msg['timestamp']}] {msg['conversation']}: {prefix} {msg['text']}")
+                else:
+                    print(f"No recent messages found for {site_name}. Run 'site refresh {site_name}' first.")
+            
+            elif args.data_type == 'recent':
+                # Generic fallback
                 data = sm.get_recent_items(site_name, "conversations.json") or sm.get_recent_items(site_name, "events.json")
                 if data:
                     print(f"Recent items for {site_name}:")
                     import json
                     print(json.dumps(data, indent=2))
                 else:
-                    print(f"No recent data found for {site_name}.")
-            else:
-                print(f"'show all' for {site_name} is not yet implemented.")
+                    print(f"No recent data found for {site_name}. Run 'site refresh {site_name}' first.")
         else:
             parser_site.print_help()
     elif args.command == 'diag':
