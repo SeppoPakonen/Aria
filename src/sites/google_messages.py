@@ -126,9 +126,22 @@ class GoogleMessagesScraper:
                         if src and not src.startswith("data:"):
                             media_info.append({"type": "image", "url": src})
                     
-                    # 3. Extract Timestamp
-                    ts_el = wrapper.select_one("mws-relative-timestamp")
-                    timestamp = ts_el.get_text(strip=True) if ts_el else "Unknown"
+                    # 3. Extract Timestamp from aria-label
+                    timestamp = "Unknown"
+                    if text_el and text_el.has_attr("aria-label"):
+                        label = text_el["aria-label"]
+                        # Look for time pattern HH.MM or HH:MM
+                        import re
+                        # Typical labels: "Sinä sanoit: ... Lähetetty 20. tammikuuta 2026 klo 16.33"
+                        # Or "Contact sanoi: ... Lähetetty 16.33"
+                        match = re.search(r"(\d{1,2}[\.:]\d{2})", label)
+                        if match:
+                            timestamp = match.group(1)
+                        else:
+                            # Try finding it in relative timestamp as fallback
+                            ts_el = wrapper.select_one("mws-relative-timestamp")
+                            if ts_el:
+                                timestamp = ts_el.get_text(strip=True)
                     
                     if text or media_info:
                         messages.append({

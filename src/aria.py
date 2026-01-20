@@ -958,7 +958,8 @@ def _run_cli():
                     print(f"Recent messages from {site_name}:")
                     for msg in recent_messages[:10]:
                         prefix = ">>" if msg["type"] == "sent" else "<<"
-                        print(f"[{msg['timestamp']}] {msg['conversation']}: {prefix} {msg['text']}")
+                        ts_display = f"[{msg['timestamp']}] " if msg['timestamp'] and msg['timestamp'] != "Unknown" else ""
+                        print(f"{ts_display}{msg['conversation']}: {prefix} {msg['text']}")
                 else:
                     print(f"No recent messages found for {site_name}. Run 'site refresh {site_name}' first.")
             
