@@ -35,33 +35,98 @@ class GoogleMessagesScraper:
 
     def refresh(self):
         """Orchestrates the full data refresh/scraping process."""
-        if not self.navigate():
-            return False
+        # Note: Navigation is now handled by aria.py before calling refresh
+        # but we check if we are on the right page.
+        if self.URL not in self.navigator.driver.current_url:
+            if not self.navigate():
+                return False
         
         print("Starting data refresh for Google Messages...")
-        # Placeholder for Phase 02, Task 02
-        conversations = self.get_conversation_list()
-        print(f"Found {len(conversations)} conversations.")
+        conversations = self.scrape_all_conversations()
         
-        # For now, just save a metadata file to verify Phase 01/02 connection
+        # Save a metadata summary
         self.sm.save_data(self.site_name, "metadata.json", {
             "last_refresh": time.ctime(),
             "conversation_count": len(conversations)
         })
         return True
 
-    def get_conversation_list(self):
-        """Extracts the list of conversations from the sidebar."""
-        # Placeholder logic
+    def scrape_all_conversations(self):
+        """Iterates through all conversations and scrapes their content."""
+        # 1. Get initial list of conversation elements
+        # We use a broader selector for the conversation items
+        items = self.navigator.driver.find_elements(By.CSS_SELECTOR, "mws-conversation-list-item")
+        print(f"Found {len(items)} conversation threads.")
+        
+        all_data = []
+        
+        for i in range(len(items)):
+            # Re-fetch items to avoid stale element exceptions
+            items = self.navigator.driver.find_elements(By.CSS_SELECTOR, "mws-conversation-list-item")
+            if i >= len(items): break
+            
+            item = items[i]
+            try:
+                # Get conversation name/title
+                name = item.find_element(By.CSS_SELECTOR, ".name-container").text.strip()
+                print(f"Scraping conversation: {name}")
+                
+                # Click the conversation to load messages
+                item.click()
+                time.sleep(2) # Wait for messages to load
+                
+                # Extract messages
+                messages = self.extract_visible_messages()
+                
+                convo_data = {
+                    "name": name,
+                    "id": i,
+                    "scraped_at": time.ctime(),
+                    "messages": messages
+                }
+                
+                # Save individual conversation file
+                safe_name = "".join([c if c.isalnum() else "_" for c in name])
+                self.sm.save_data(self.site_name, f"convo_{safe_name}.json", convo_data)
+                
+                all_data.append({"name": name, "message_count": len(messages)})
+            except Exception as e:
+                logger.error(f"Error scraping conversation {i}: {e}")
+        
+        # Save the master list
+        self.sm.save_data(self.site_name, "conversations.json", all_data)
+        return all_data
+
+    def extract_visible_messages(self):
+        """Extracts messages from the currently open conversation thread."""
+        messages = []
         try:
-            elements = self.navigator.driver.find_elements(By.TAG_NAME, "mws-conversation-list-item")
-            conversations = []
-            for el in elements:
+            # Look for message elements
+            msg_elements = self.navigator.driver.find_elements(By.CSS_SELECTOR, "mws-message-wrapper")
+            for msg_el in msg_elements:
                 try:
-                    name = el.find_element(By.CLASS_NAME, "name-container").text
-                    conversations.append({"name": name})
+                    # Identify sender (usually by looking for classes or position)
+                    # This is a heuristic and might need adjustment based on Google's DOM
+                    text = msg_el.find_element(By.CSS_SELECTOR, ".text-msg").text.strip()
+                    
+                    # Try to find timestamp
+                    try:
+                        timestamp = msg_el.find_element(By.CSS_SELECTOR, ".timestamp").text.strip()
+                    except:
+                        timestamp = "Unknown"
+                        
+                    # Check for outgoing/incoming status
+                    is_outgoing = "outgoing" in msg_el.get_attribute("class")
+                    
+                    messages.append({
+                        "text": text,
+                        "timestamp": timestamp,
+                        "type": "sent" if is_outgoing else "received"
+                    })
                 except:
+                    # Could be a non-text message (media, etc.)
                     pass
-            return conversations
-        except:
-            return []
+        except Exception as e:
+            logger.error(f"Error extracting messages: {e}")
+            
+        return messages

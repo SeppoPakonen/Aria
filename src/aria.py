@@ -891,16 +891,46 @@ def _run_cli():
         elif args.site_command == 'refresh':
             site_name = args.site_name
             print(f"Refreshing data for {site_name}...")
-            # Dispatch to site-specific logic
-            if site_name == "google-messages":
-                if navigator.start_session(browser_name=args.browser, headless=args.headless, profile=args.profile):
-                    scraper = GoogleMessagesScraper(navigator, sm)
-                    if scraper.refresh():
-                        print(f"Successfully refreshed data for {site_name}.")
-                    else:
-                        print(f"Failed to refresh data for {site_name}.")
-            else:
+            
+            # Define target URLs for sites
+            site_urls = {
+                "google-messages": "https://messages.google.com/web/conversations",
+                "whatsapp": "https://web.whatsapp.com/",
+                "calendar": "https://calendar.google.com/",
+                "threads": "https://www.threads.com/",
+                "youtube-studio": "https://studio.youtube.com/channel/"
+            }
+            
+            target_url = site_urls.get(site_name)
+            if not target_url:
                 print(f"Refresh logic for site '{site_name}' is not yet implemented.")
+                return
+
+            # Try to find existing tab first
+            found = False
+            if navigator.connect_to_session(browser_name=args.browser):
+                if navigator.find_tab_by_url(target_url):
+                    print(f"Found existing tab for {site_name}. Reusing it.")
+                    found = True
+            
+            if not found:
+                if not navigator.start_session(browser_name=args.browser, headless=args.headless, profile=args.profile):
+                    print(f"Failed to start session for {site_name}.")
+                    return
+                # Check again in the new session just in case
+                if not navigator.find_tab_by_url(target_url):
+                    print(f"Navigating to {target_url}...")
+                    navigator.navigate(target_url)
+
+            # Dispatch to scraper
+            if site_name == "google-messages":
+                scraper = GoogleMessagesScraper(navigator, sm)
+                if scraper.refresh():
+                    print(f"Successfully refreshed data for {site_name}.")
+                else:
+                    print(f"Failed to refresh data for {site_name}.")
+            else:
+                print(f"Scraper for '{site_name}' is not yet fully implemented.")
         elif args.site_command == 'show':
             site_name = args.site_name
             if args.data_type == 'recent':

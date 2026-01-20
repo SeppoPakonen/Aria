@@ -167,7 +167,6 @@ class AriaNavigator(BaseNavigator):
                 handles.append(handle)
         return handles
 
-    @time_it(logger)
     def list_tabs(self):
         if not self.driver:
             self.driver = self.connect_to_session()
@@ -176,28 +175,30 @@ class AriaNavigator(BaseNavigator):
             return []
 
         tabs = []
-        original_window = self.driver.current_window_handle
+        current_handle = self.driver.current_window_handle
+        for i, handle in enumerate(self.driver.window_handles):
+            self.driver.switch_to.window(handle)
+            tabs.append({
+                "index": i,
+                "handle": handle,
+                "title": self.driver.title,
+                "url": self.driver.current_url,
+                "active": handle == current_handle
+            })
         
-        browser_name = self._get_current_browser()
-        session_data = self._load_session_data(browser_name)
-        all_tags = session_data.get("tags", {}) if session_data else {}
-
-        try:
-            for handle in self.driver.window_handles:
-                self.driver.switch_to.window(handle)
-                tabs.append({
-                    "id": handle,
-                    "title": self.driver.title,
-                    "url": self.driver.current_url,
-                    "tags": all_tags.get(handle, [])
-                })
-            # Switch back to the original window
-            self.driver.switch_to.window(original_window)
-        except WebDriverException as e:
-            logger.error(f"Error listing tabs: {e}")
-            return []
-        
+        # Switch back to the original handle
+        self.driver.switch_to.window(current_handle)
         return tabs
+
+    def find_tab_by_url(self, url_pattern):
+        """Finds a tab that matches a URL pattern and switches to it."""
+        tabs = self.list_tabs()
+        for tab in tabs:
+            if url_pattern in tab["url"]:
+                logger.info(f"Found existing tab matching '{url_pattern}' at index {tab['index']}")
+                self.goto_tab(tab["index"])
+                return True
+        return False
 
     def _get_current_browser(self):
         current_file = self.get_session_file_path()
