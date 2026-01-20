@@ -13,6 +13,7 @@ from credential_manager import CredentialManager
 from site_manager import SiteManager
 from sites.google_messages import GoogleMessagesScraper
 from sites.whatsapp import WhatsAppScraper
+from sites.discord import DiscordScraper
 from exceptions import AriaError
 
 logger = get_logger("aria")
@@ -939,6 +940,12 @@ def _run_cli():
                     print(f"Successfully refreshed data for {site_name}.")
                 else:
                     print(f"Failed to refresh data for {site_name}.")
+            elif site_name == "discord":
+                scraper = DiscordScraper(navigator, sm)
+                if scraper.refresh():
+                    print(f"Successfully refreshed data for {site_name}.")
+                else:
+                    print(f"Failed to refresh data for {site_name}.")
             else:
                 print(f"Scraper for '{site_name}' is not yet fully implemented.")
         elif args.site_command == 'show':
@@ -958,14 +965,34 @@ def _run_cli():
             # 1. Action: list
             if args.action == 'list':
                 if mappings:
-                    print(f"Conversations for {site_name} (Persistent IDs):")
+                    print(f"Items for {site_name} (Persistent IDs):")
                     for cid in sorted(mappings.keys(), key=int):
                         print(f" {cid:3}: {mappings[cid]}")
                 else:
-                    print(f"No conversations indexed for {site_name}. Run 'site refresh {site_name}' first.")
+                    print(f"No items indexed for {site_name}. Run 'site refresh {site_name}' first.")
             
-            # 2. Action: <id> show
+            # 2. Action: <id> list (Specific to Discord for listing channels)
+            elif site_name == "discord" and item_name and args.sub_action == 'list':
+                # Find all chat_ServerName_*.json files
+                safe_server = "".join([c if c.isalnum() else "_" for c in item_name])
+                site_dir = sm.get_site_dir(site_name)
+                files = [f for f in os.listdir(site_dir) if f.startswith(f"chat_{safe_server}_") and f.endswith(".json")]
+                
+                if files:
+                    print(f"Channels in {item_name}:")
+                    for f in files:
+                        # Extract channel name from filename: chat_Server_Channel.json
+                        chan_name = f.replace(f"chat_{safe_server}_", "").replace(".json", "")
+                        print(f"- {chan_name}")
+                else:
+                    print(f"No channels found for server {item_name}.")
+
+            # 3. Action: <id> show
             elif item_name and args.sub_action == 'show':
+                if site_name == "discord":
+                    print("Error: For Discord, use 'site show discord <id> <channel_name> show'")
+                    return
+                
                 safe_name = "".join([c if c.isalnum() else "_" for c in item_name])
                 data = sm.load_data(site_name, f"convo_{safe_name}.json")
                 if data and "messages" in data:

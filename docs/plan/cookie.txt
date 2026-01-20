@@ -2,11 +2,11 @@
 
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
-- **Phase**: 02-google-messages-integration
-- **Task**: 05-persistent-numbering-and-subcommands
-- **Final Alignment**: Implemented persistent numbering using a registry.json. Added 'list', '<id> show', and '<id> people' subcommands to 'site show'. Verified E2E for Google Messages.
+- **Phase**: 03-whatsapp-and-discord-integration
+- **Task**: 01-whatsapp-navigation-and-scraping
+- **Final Alignment**: Completed and verified WhatsApp scraper. Implemented scaffold for Discord scraper and integrated it into the CLI.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
-- **Phase**: 03-whatsapp-and-threads-integration
-- **Task**: 02-threads-navigation-and-scraping
+- **Phase**: 03-whatsapp-and-discord-integration
+- **Task**: 02-discord-navigation-and-scraping
