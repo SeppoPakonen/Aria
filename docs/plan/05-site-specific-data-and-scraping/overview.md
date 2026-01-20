@@ -15,8 +15,8 @@ Implement a robust framework for site-tailored automation and personal data scra
 |----|-------------------------------------------|-------------------------------------------------------------------------------|-------------|
 | 01 | Data Architecture & Framework             | Implement `SiteManager`, local storage logic, and the `site` command base.    | Planned     |
 | 02 | Google Messages Integration               | Implement full scraping (conversations, media) and local query commands.      | Planned     |
-| 03 | WhatsApp & Threads Integration            | Implement scraping logic for WhatsApp Web and Threads.                        | Planned     |
-| 04 | Google Calendar & YouTube Studio          | Implement event scraping and channel metrics retrieval.                       | Planned     |
+| 03 | WhatsApp & Discord Integration            | Implement scraping logic for WhatsApp and Discord.                            | In Progress |
+| 04 | Threads, Calendar & YouTube Studio        | Implement scraping for Threads, Google Calendar, and YouTube Studio.          | Planned     |
 | 05 | Sync & Maintenance                        | Implement incremental refreshes, data integrity checks, and maintenance.      | Planned     |
 
 ## Runbook Alignment
