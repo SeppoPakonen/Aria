@@ -4,7 +4,7 @@
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 02-google-messages-integration
 - **Task**: 04-implement-show-recent
-- **Final Alignment**: Verified HTML structure for Google Messages using custom mw/mws tags. Updated scraper to use verified selectors and JS-based clicking for reliable thread loading. Refined 'site show' to display real message data.
+- **Final Alignment**: Verified full E2E flow for Google Messages. Fixed CLI bugs and installed BeautifulSoup. Scraper now successfully populates local database and 'site show' displays the data accurately.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
