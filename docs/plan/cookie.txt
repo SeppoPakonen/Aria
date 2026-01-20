@@ -3,10 +3,10 @@
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 03-whatsapp-and-discord-integration
-- **Task**: 02-discord-navigation-and-scraping
-- **Final Alignment**: Implemented and verified Discord scraper with language-agnostic data attributes and robust message extraction using BeautifulSoup. Added overlay handling for age-restricted channels.
+- **Task**: 03-discord-persistent-ids
+- **Final Alignment**: Finalized and verified Discord scraping with hierarchical server/channel support and persistent IDs. Implemented scaffold for Threads.net.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
-- **Phase**: 03-whatsapp-and-discord-integration
-- **Task**: 03-discord-persistent-ids
+- **Phase**: 04-threads-calendar-and-youtube-integration
+- **Task**: 01-threads-navigation-and-scraping

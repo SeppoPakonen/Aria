@@ -14,6 +14,7 @@ from site_manager import SiteManager
 from sites.google_messages import GoogleMessagesScraper
 from sites.whatsapp import WhatsAppScraper
 from sites.discord import DiscordScraper
+from sites.threads import ThreadsScraper
 from exceptions import AriaError
 
 logger = get_logger("aria")
@@ -902,7 +903,7 @@ def _run_cli():
                 "whatsapp": "https://web.whatsapp.com/",
                 "discord": "https://discord.com/app",
                 "calendar": "https://calendar.google.com/",
-                "threads": "https://www.threads.com/",
+                "threads": "https://www.threads.net/",
                 "youtube-studio": "https://studio.youtube.com/channel/"
             }
             
@@ -935,7 +936,8 @@ def _run_cli():
             scrapers = {
                 "google-messages": GoogleMessagesScraper,
                 "whatsapp": WhatsAppScraper,
-                "discord": DiscordScraper
+                "discord": DiscordScraper,
+                "threads": ThreadsScraper
             }
             
             if site_name in scrapers:
@@ -1030,28 +1032,49 @@ def _run_cli():
 
             # 4. Action: recent (Default)
             elif args.action == 'recent' or (not args.action and not item_name):
-                if site_name in ["google-messages", "whatsapp"]:
+                if site_name in ["google-messages", "whatsapp", "threads"]:
                     site_dir = sm.get_site_dir(site_name)
+                    
+                    # For messaging sites, look for convo_*.json
                     files = [f for f in os.listdir(site_dir) if f.startswith("convo_") and f.endswith(".json")]
-                    recent_messages = []
+                    # For feed-based sites, look for feed.json
+                    feed_file = os.path.join(site_dir, "feed.json")
+                    
+                    recent_items = []
+                    
+                    # Process conversations
                     for f in files:
                         data = sm.load_data(site_name, f)
                         if data and "messages" in data and data["messages"]:
                             last_msg = data["messages"][-1]
-                            recent_messages.append({
-                                "conversation": data.get("name", "Unknown"),
+                            recent_items.append({
+                                "source": data.get("name", "Unknown"),
                                 "text": last_msg.get("text", "[Media]"),
                                 "timestamp": last_msg.get("timestamp", ""),
                                 "type": last_msg.get("type", "")
                             })
-                    if recent_messages:
-                        print(f"Recent messages from {site_name}:")
-                        for msg in sorted(recent_messages, key=lambda x: x["conversation"])[:15]:
-                            prefix = ">>" if msg["type"] == "sent" else "<<"
-                            ts_display = f"[{msg['timestamp']}] " if msg['timestamp'] and msg['timestamp'] != "Unknown" else ""
-                            print(f"{ts_display}{msg['conversation']}: {prefix} {msg['text']}")
+                    
+                    # Process feed
+                    if os.path.exists(feed_file):
+                        feed_data = sm.load_data(site_name, "feed.json")
+                        if feed_data:
+                            # Add last 5 posts
+                            for post in feed_data[:5]:
+                                recent_items.append({
+                                    "source": post.get("user", "Post"),
+                                    "text": post.get("text", ""),
+                                    "timestamp": post.get("timestamp", ""),
+                                    "type": "received"
+                                })
+
+                    if recent_items:
+                        print(f"Recent items from {site_name}:")
+                        for item in sorted(recent_items, key=lambda x: str(x["timestamp"]), reverse=True)[:15]:
+                            prefix = ">>" if item.get("type") == "sent" else "<<"
+                            ts_display = f"[{item['timestamp']}] " if item['timestamp'] and item['timestamp'] != "Unknown" else ""
+                            print(f"{ts_display}{item['source']}: {prefix} {item['text']}")
                     else:
-                        print(f"No recent messages found for {site_name}. Run 'site refresh {site_name}' first.")
+                        print(f"No recent items found for {site_name}. Run 'site refresh {site_name}' first.")
                 else:
                     # Generic fallback
                     data = sm.get_recent_items(site_name, "conversations.json") or sm.get_recent_items(site_name, "events.json")
