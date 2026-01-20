@@ -12,6 +12,7 @@ from report_manager import ReportManager
 from credential_manager import CredentialManager
 from site_manager import SiteManager
 from sites.google_messages import GoogleMessagesScraper
+from sites.whatsapp import WhatsAppScraper
 from exceptions import AriaError
 
 logger = get_logger("aria")
@@ -927,6 +928,12 @@ def _run_cli():
             # Dispatch to scraper
             if site_name == "google-messages":
                 scraper = GoogleMessagesScraper(navigator, sm)
+                if scraper.refresh():
+                    print(f"Successfully refreshed data for {site_name}.")
+                else:
+                    print(f"Failed to refresh data for {site_name}.")
+            elif site_name == "whatsapp":
+                scraper = WhatsAppScraper(navigator, sm)
                 if scraper.refresh():
                     print(f"Successfully refreshed data for {site_name}.")
                 else:
