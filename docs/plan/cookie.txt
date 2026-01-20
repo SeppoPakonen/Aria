@@ -2,11 +2,11 @@
 
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
-- **Phase**: 02-google-messages-integration
-- **Task**: 04-implement-show-recent
-- **Final Alignment**: Fully verified Google Messages scraping with BeautifulSoup, robust timestamp extraction from aria-labels, and formatted 'site show' output.
+- **Phase**: 03-whatsapp-and-threads-integration
+- **Task**: 01-whatsapp-navigation-and-scraping
+- **Final Alignment**: Implemented WhatsApp scraper with synthetic click events for reliable thread switching and robust timestamp extraction from data-pre-plain-text. Verified E2E flow with 'site refresh' and 'site show'.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 03-whatsapp-and-threads-integration
-- **Task**: 01-whatsapp-navigation-and-scraping
+- **Task**: 02-threads-navigation-and-scraping

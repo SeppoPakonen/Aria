@@ -942,8 +942,8 @@ def _run_cli():
                 print(f"Scraper for '{site_name}' is not yet fully implemented.")
         elif args.site_command == 'show':
             site_name = args.site_name
-            if site_name == "google-messages" and args.data_type == 'recent':
-                # Custom logic for Google Messages: Look into convo_*.json files
+            if site_name in ["google-messages", "whatsapp"] and args.data_type == 'recent':
+                # Custom logic for messaging sites: Look into convo_*.json files
                 site_dir = sm.get_site_dir(site_name)
                 files = [f for f in os.listdir(site_dir) if f.startswith("convo_") and f.endswith(".json")]
                 
@@ -961,9 +961,9 @@ def _run_cli():
                         })
                 
                 if recent_messages:
-                    # Sort by some heuristic or just show the list
+                    # Sort by some heuristic (e.g., conversation name for now)
                     print(f"Recent messages from {site_name}:")
-                    for msg in recent_messages[:10]:
+                    for msg in sorted(recent_messages, key=lambda x: x["conversation"])[:15]:
                         prefix = ">>" if msg["type"] == "sent" else "<<"
                         ts_display = f"[{msg['timestamp']}] " if msg['timestamp'] and msg['timestamp'] != "Unknown" else ""
                         print(f"{ts_display}{msg['conversation']}: {prefix} {msg['text']}")
