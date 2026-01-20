@@ -1,12 +1,12 @@
 ### Aria Implementation Progress
 
 ### Last Completed Task
-- **Track**: 04-enterprise-readiness-and-robustness
-- **Phase**: 04-cicd-devops-integration
-- **Task**: 03-artifact-collection-helpers
-- **Final Alignment**: Finalized MVP and Advanced features, migrated to google-genai, and implemented iterative search.
+- **Track**: 05-site-specific-data-and-scraping
+- **Phase**: 01-data-architecture-and-framework
+- **Task**: 02-add-site-command-to-cli
+- **Final Alignment**: Implemented SiteManager for local JSON storage and integrated 'site' command into the CLI with list/refresh/show subparsers.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
-- **Phase**: 01-data-architecture-and-framework
-- **Task**: 01-implement-site-manager
+- **Phase**: 02-google-messages-integration
+- **Task**: 01-google-messages-navigation

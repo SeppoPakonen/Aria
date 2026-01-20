@@ -10,6 +10,8 @@ from plugin_manager import PluginManager, BaseAIProvider
 from logger import setup_logging, get_logger, set_trace_id, time_it, get_performance_metrics
 from report_manager import ReportManager
 from credential_manager import CredentialManager
+from site_manager import SiteManager
+from sites.google_messages import GoogleMessagesScraper
 from exceptions import AriaError
 
 logger = get_logger("aria")
@@ -334,6 +336,19 @@ def _run_cli():
     parser_report_generate.add_argument('--format', type=str, choices=['markdown', 'html'], default='markdown', help='Format of the generated report.')
     
     report_subparsers.add_parser('list', help='List all generated reports.')
+
+    # Define the 'site' command
+    parser_site = subparsers.add_parser('site', help='Manage site-specific data and scraping.')
+    site_subparsers = parser_site.add_subparsers(dest="site_command")
+    
+    parser_site_list = site_subparsers.add_parser('list', help='List all sites with local data.')
+    
+    parser_site_refresh = site_subparsers.add_parser('refresh', help='Refresh data for a specific site.')
+    parser_site_refresh.add_argument('site_name', type=str, help='The name of the site (e.g., google-messages).')
+    
+    parser_site_show = site_subparsers.add_parser('show', help='Show local data for a site.')
+    parser_site_show.add_argument('site_name', type=str, help='The name of the site.')
+    parser_site_show.add_argument('data_type', type=str, choices=['recent', 'all'], default='recent', nargs='?', help='Type of data to show.')
 
     # Define the 'diag' command
     subparsers.add_parser('diag', help='Show diagnostic information.')
@@ -863,6 +878,45 @@ def _run_cli():
                     print("No reports found.")
             else:
                 print("No reports found.")
+    elif args.command == 'site':
+        sm = SiteManager()
+        if args.site_command == 'list':
+            sites = sm.list_sites()
+            if sites:
+                print("Sites with local data:")
+                for s in sites:
+                    print(f"- {s}")
+            else:
+                print("No sites with local data found.")
+        elif args.site_command == 'refresh':
+            site_name = args.site_name
+            print(f"Refreshing data for {site_name}...")
+            # Dispatch to site-specific logic
+            if site_name == "google-messages":
+                if navigator.start_session(browser_name=args.browser, headless=args.headless, profile=args.profile):
+                    scraper = GoogleMessagesScraper(navigator, sm)
+                    if scraper.refresh():
+                        print(f"Successfully refreshed data for {site_name}.")
+                    else:
+                        print(f"Failed to refresh data for {site_name}.")
+            else:
+                print(f"Refresh logic for site '{site_name}' is not yet implemented.")
+        elif args.site_command == 'show':
+            site_name = args.site_name
+            if args.data_type == 'recent':
+                # This is a generic "show recent" - in reality, sites will have specific filenames
+                # For now, we'll look for common filenames like conversations.json or events.json
+                data = sm.get_recent_items(site_name, "conversations.json") or sm.get_recent_items(site_name, "events.json")
+                if data:
+                    print(f"Recent items for {site_name}:")
+                    import json
+                    print(json.dumps(data, indent=2))
+                else:
+                    print(f"No recent data found for {site_name}.")
+            else:
+                print(f"'show all' for {site_name} is not yet implemented.")
+        else:
+            parser_site.print_help()
     elif args.command == 'diag':
         import sys
         import platform
@@ -1003,6 +1057,12 @@ def _run_cli():
         print("        Interact with the page using natural language (e.g., 'Click login').")
         print("\n    page <id> summarize [PROMPT]")
         print("        Summarize the content of a tab using AI.")
+        print("\n    site list")
+        print("        List all sites that have locally stored data.")
+        print("\n    site refresh <site_name>")
+        print("        Navigate to a site and sync data to local storage (e.g., google-messages).")
+        print("\n    site show <site_name> [recent|all]")
+        print("        Display locally stored data for a site.")
         print("\n    script run <id> [--param name=value]")
         print("        Execute a saved script. Supports parameter injection.")
         print("\n    settings export-artifacts [--path PATH]")
