@@ -3,10 +3,10 @@
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 03-whatsapp-and-discord-integration
-- **Task**: 01-whatsapp-navigation-and-scraping
-- **Final Alignment**: Completed and verified WhatsApp scraper. Implemented scaffold for Discord scraper and integrated it into the CLI.
+- **Task**: 02-discord-navigation-and-scraping
+- **Final Alignment**: Implemented and verified Discord scraper with language-agnostic data attributes and robust message extraction using BeautifulSoup. Added overlay handling for age-restricted channels.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 03-whatsapp-and-discord-integration
-- **Task**: 02-discord-navigation-and-scraping
+- **Task**: 03-discord-persistent-ids

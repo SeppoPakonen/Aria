@@ -352,6 +352,7 @@ def _run_cli():
     parser_site_show.add_argument('site_name', type=str, help='The name of the site.')
     parser_site_show.add_argument('action', type=str, default='recent', nargs='?', help='Action to perform (recent, list, <id> show, <id> people).')
     parser_site_show.add_argument('sub_action', type=str, nargs='?', help='Secondary action (e.g., "show" or "people" when an ID is provided).')
+    parser_site_show.add_argument('extra_action', type=str, nargs='?', help='Tertiary action (used for Discord channels).')
 
     # Define the 'diag' command
     subparsers.add_parser('diag', help='Show diagnostic information.')
@@ -899,6 +900,7 @@ def _run_cli():
             site_urls = {
                 "google-messages": "https://messages.google.com/web/conversations",
                 "whatsapp": "https://web.whatsapp.com/",
+                "discord": "https://discord.com/app",
                 "calendar": "https://calendar.google.com/",
                 "threads": "https://www.threads.com/",
                 "youtube-studio": "https://studio.youtube.com/channel/"
@@ -919,7 +921,9 @@ def _run_cli():
                     found = True
             
             if not found:
-                if not navigator.start_session(browser_name=browser_name, headless=args.headless, profile=args.profile):
+                headless = getattr(args, 'headless', False)
+                profile = getattr(args, 'profile', None)
+                if not navigator.start_session(browser_name=browser_name, headless=headless, profile=profile):
                     print(f"Failed to start session for {site_name}.")
                     return
                 # Check again in the new session just in case
@@ -928,20 +932,15 @@ def _run_cli():
                     navigator.navigate(target_url)
 
             # Dispatch to scraper
-            if site_name == "google-messages":
-                scraper = GoogleMessagesScraper(navigator, sm)
-                if scraper.refresh():
-                    print(f"Successfully refreshed data for {site_name}.")
-                else:
-                    print(f"Failed to refresh data for {site_name}.")
-            elif site_name == "whatsapp":
-                scraper = WhatsAppScraper(navigator, sm)
-                if scraper.refresh():
-                    print(f"Successfully refreshed data for {site_name}.")
-                else:
-                    print(f"Failed to refresh data for {site_name}.")
-            elif site_name == "discord":
-                scraper = DiscordScraper(navigator, sm)
+            scrapers = {
+                "google-messages": GoogleMessagesScraper,
+                "whatsapp": WhatsAppScraper,
+                "discord": DiscordScraper
+            }
+            
+            if site_name in scrapers:
+                scraper_class = scrapers[site_name]
+                scraper = scraper_class(navigator, sm)
                 if scraper.refresh():
                     print(f"Successfully refreshed data for {site_name}.")
                 else:
@@ -988,9 +987,25 @@ def _run_cli():
                     print(f"No channels found for server {item_name}.")
 
             # 3. Action: <id> show
-            elif item_name and args.sub_action == 'show':
+            elif item_name and (args.sub_action == 'show' or args.extra_action == 'show'):
                 if site_name == "discord":
-                    print("Error: For Discord, use 'site show discord <id> <channel_name> show'")
+                    if not args.sub_action:
+                        print("Error: For Discord, use 'site show discord <id> <channel_name> show'")
+                        return
+                    
+                    chan_name = args.sub_action
+                    safe_server = "".join([c if c.isalnum() else "_" for c in item_name])
+                    safe_chan = "".join([c if c.isalnum() else "_" for c in chan_name])
+                    filename = f"chat_{safe_server}_{safe_chan}.json"
+                    
+                    data = sm.load_data(site_name, filename)
+                    if data and "messages" in data:
+                        print(f"Messages for {item_name} > {chan_name}:")
+                        for msg in data["messages"]:
+                            ts = f"[{msg['timestamp']}] " if msg.get('timestamp') and msg['timestamp'] != "Unknown" else ""
+                            print(f"{ts}{msg.get('user', 'User')}: {msg.get('text', '')}")
+                    else:
+                        print(f"No message data found for {item_name} > {chan_name}.")
                     return
                 
                 safe_name = "".join([c if c.isalnum() else "_" for c in item_name])

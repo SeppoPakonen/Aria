@@ -10,7 +10,7 @@ from navigator import AriaNavigator
 logger = logging.getLogger("aria.sites.discord")
 
 class DiscordScraper:
-    """Scraper for Discord Web."""
+    """Scraper for Discord Web using language-agnostic data attributes."""
     URL = "https://discord.com/app"
 
     def __init__(self, navigator: AriaNavigator, site_manager):
@@ -19,14 +19,20 @@ class DiscordScraper:
         self.site_name = "discord"
 
     def navigate(self):
-        """Navigates to Discord."""
+        """Navigates to Discord and waits for full load."""
+        if "/channels/" in self.navigator.driver.current_url:
+            return True
+
         print(f"Navigating to {self.URL}...")
         self.navigator.navigate(self.URL)
         
         try:
-            print("Waiting for Discord to load...")
-            # Look for the server list or home button
-            self.navigator.wait_for_element("nav[aria-label='Servers'], nav[aria-label='Palvelimet']", by=By.CSS_SELECTOR, timeout=45)
+            print("Waiting for Discord to fully load...")
+            # Wait for the app container
+            self.navigator.wait_for_element("div[id='app-mount']", by=By.CSS_SELECTOR, timeout=45)
+            # Wait specifically for the guild scroller
+            self.navigator.wait_for_element("ul[data-list-id='guildsnav']", by=By.CSS_SELECTOR, timeout=20)
+            time.sleep(3)
             print("Discord loaded successfully.")
             return True
         except Exception as e:
@@ -36,15 +42,17 @@ class DiscordScraper:
 
     def refresh(self):
         """Orchestrates the Discord data refresh."""
-        if "discord.com" not in self.navigator.driver.current_url:
-            if not self.navigate():
-                return False
+        if not self.navigate():
+            return False
         
         print("Starting data refresh for Discord...")
         
         # 1. Discover Servers
         servers = self.discover_servers()
-        print(f"Found {len(servers)} servers.")
+        if not any(s['is_home'] for s in servers):
+            servers.insert(0, {"id": "guildsnav___home", "name": "Direct Messages", "is_home": True})
+            
+        print(f"Found {len(servers)} server containers.")
         
         # 2. Update Registry
         self.sm.update_registry(self.site_name, [s["name"] for s in servers])
@@ -60,18 +68,18 @@ class DiscordScraper:
         return True
 
     def discover_servers(self):
-        """Finds all available servers in the left sidebar."""
+        """Finds all available servers in the left sidebar guild rail."""
         script = """
-        const nav = document.querySelector('nav[aria-label="Servers"]') || 
-                    document.querySelector('nav[aria-label="Palvelimet"]');
-        if (!nav) return [];
+        const rail = document.querySelector('ul[data-list-id="guildsnav"]');
+        if (!rail) return [];
         
-        return Array.from(nav.querySelectorAll('div[data-list-item-id^="guildsnav_"]'))
-            .map(el => ({
-                id: el.getAttribute('data-list-item-id'),
-                name: el.getAttribute('aria-label'),
-                is_home: el.getAttribute('data-list-item-id').includes('home')
-            }));
+        return Array.from(rail.querySelectorAll('div[data-list-item-id^="guildsnav___"]'))
+            .map(el => {
+                const id = el.getAttribute('data-list-item-id');
+                const isHome = id.includes('home');
+                const name = isHome ? "Direct Messages" : (el.getAttribute('aria-label') || id.split('___')[1]);
+                return { id, name, is_home: isHome };
+            });
         """
         return self.navigator.driver.execute_script(script)
 
@@ -79,55 +87,109 @@ class DiscordScraper:
         """Clicks a server and crawls its channels."""
         print(f"Switching to server: {server['name']}")
         
-        # Click server
-        click_script = f"document.querySelector('[data-list-item-id="{server['id']}"]').click();"
-        self.navigator.driver.execute_script(click_script)
-        time.sleep(3)
+        if server.get('is_home'):
+            if "/channels/@me" not in self.navigator.driver.current_url:
+                self.navigator.navigate("https://discord.com/channels/@me")
+                time.sleep(5)
+        else:
+            # Click server via synthetic mouse events
+            click_script = """
+            const id = arguments[0];
+            const el = document.querySelector(`[data-list-item-id="${id}"]`);
+            if (el) {
+                const events = ['mousedown', 'mouseup', 'click'];
+                events.forEach(type => {
+                    const ev = new MouseEvent(type, { view: window, bubbles: true, cancelable: true });
+                    el.dispatchEvent(ev);
+                });
+                return true;
+            }
+            return false;
+            """
+            success = self.navigator.driver.execute_script(click_script, server['id'])
+            if not success:
+                print(f"  Warning: Could not click server {server['name']}")
+                return
+            time.sleep(5)
         
         # Discover channels
-        channels = self.discover_channels()
-        print(f"  Found {len(channels)} channels in {server['name']}")
+        channels = self.discover_channels(server.get('is_home', False))
+        print(f"  Found {len(channels)} channels/DMs in {server['name']}")
         
         for channel in channels:
-            if channel['type'] == 'text' and (channel['has_unread'] or self.is_history_empty(server, channel)):
-                self.scrape_channel(server, channel)
+            if channel['type'] in ['text', 'dm']:
+                # For heavy Discord scraping, we only refresh if unread or empty
+                if channel['has_unread'] or self.is_history_empty(server, channel):
+                    self.scrape_channel(server, channel)
 
-    def discover_channels(self):
-        """Finds all text channels in the current server."""
-        script = """
-        const sidebar = document.querySelector('nav[aria-label^="Channels"]') || 
-                        document.querySelector('nav[aria-label^="Kanavat"]');
-        if (!sidebar) return [];
-        
-        return Array.from(sidebar.querySelectorAll('li'))
-            .map(li => {
-                const link = li.querySelector('a[data-list-item-id^="channels_"]');
-                if (!link) return null;
-                
-                const name = link.getAttribute('aria-label') || "";
-                return {
-                    id: link.getAttribute('data-list-item-id'),
-                    name: name,
-                    type: name.includes('#') ? 'text' : 'other',
-                    has_unread: !!li.querySelector('[class*="unread"]')
-                };
-            }).filter(c => c !== null);
-        """
+    def discover_channels(self, is_home=False):
+        """Finds all text channels or DMs using data attributes."""
+        if is_home:
+            script = """
+            return Array.from(document.querySelectorAll('a[data-list-item-id^="private-channels-uid_"]'))
+                .map(a => {
+                    const id = a.getAttribute('data-list-item-id');
+                    const label = a.getAttribute('aria-label') || "Unknown DM";
+                    return { id, name: label, type: 'dm', has_unread: !!a.querySelector('[class*="unread"]') };
+                });
+            """
+        else:
+            script = """
+            return Array.from(document.querySelectorAll('a[data-list-item-id^="channels_"]'))
+                .map(a => {
+                    const id = a.getAttribute('data-list-item-id');
+                    const label = a.getAttribute('aria-label') || "";
+                    const isText = id.includes('channel') || label.includes('#');
+                    return {
+                        id: id,
+                        name: label,
+                        type: isText ? 'text' : 'other',
+                        has_unread: !!a.closest('li').querySelector('[class*="unread"]')
+                    };
+                }).filter(c => c !== null);
+            """
         return self.navigator.driver.execute_script(script)
 
     def scrape_channel(self, server, channel):
         """Clicks a channel and extracts messages."""
         print(f"    Scraping channel: {channel['name']}")
         
-        # Click channel
-        click_script = f"document.querySelector('[data-list-item-id="{channel['id']}"]').click();"
-        self.navigator.driver.execute_script(click_script)
-        time.sleep(3)
+        click_script = """
+        const id = arguments[0];
+        const el = document.querySelector(`a[data-list-item-id="${id}"]`);
+        if (el) {
+            const events = ['mousedown', 'mouseup', 'click'];
+            events.forEach(type => {
+                const ev = new MouseEvent(type, { view: window, bubbles: true, cancelable: true });
+                el.dispatchEvent(ev);
+            });
+            return true;
+        }
+        return false;
+        """
+        self.navigator.driver.execute_script(click_script, channel['id'])
+        time.sleep(3) 
+
+        # Handle Age Restriction or other overlays
+        handle_overlay_script = """
+        // Find buttons that look like "Continue" or "Jatka"
+        const buttons = Array.from(document.querySelectorAll('button'));
+        const continueBtn = buttons.find(b => 
+            b.innerText.toLowerCase().includes('jatka') || 
+            b.innerText.toLowerCase().includes('continue')
+        );
+        if (continueBtn) {
+            continueBtn.click();
+            return true;
+        }
+        return false;
+        """
+        if self.navigator.driver.execute_script(handle_overlay_script):
+            print("      Bypassed age restriction overlay.")
+            time.sleep(3)
         
-        # Extract messages using BS4
         messages = self.extract_messages()
         
-        # Save
         filename = f"chat_{self.safe_fn(server['name'])}_{self.safe_fn(channel['name'])}.json"
         self.sm.save_data(self.site_name, filename, {
             "server": server['name'],
@@ -137,34 +199,41 @@ class DiscordScraper:
         })
 
     def extract_messages(self):
-        """Extracts messages from the active chat window."""
+        """Extracts messages from the active chat window using BeautifulSoup."""
         from bs4 import BeautifulSoup
         try:
-            # Discord messages are in a list with specific role or class
-            main_html = self.navigator.driver.execute_script("return document.querySelector('main').innerHTML")
-            soup = BeautifulSoup(main_html, 'html.parser')
+            main_html = self.navigator.driver.execute_script("""
+                const m = document.querySelector('main') || document.querySelector('div[class*="chatContent"]');
+                return m ? m.innerHTML : null;
+            """)
+            if not main_html: return []
             
-            # This is a complex React structure, we'll need to refine selectors
-            msg_elements = soup.select('li[class*="message_"]')
+            soup = BeautifulSoup(main_html, 'html.parser')
+            msg_elements = soup.select('li[id^="chat-messages-"]')
             messages = []
             
             for el in msg_elements:
                 try:
-                    # Discord often groups messages under one avatar
-                    user = el.select_one('[class*="username_"]')
-                    content = el.select_one('[class*="messageContent_"]')
-                    ts = el.select_one('time')
+                    user_el = el.select_one('span[class*="username"]') or el.select_one('div[class*="username"]')
+                    user = user_el.get_text(strip=True) if user_el else "Continuation"
                     
-                    if content:
+                    content_el = el.select_one('div[id^="message-content-"]') or el.select_one('div[class*="messageContent"]')
+                    text = content_el.get_text(strip=True) if content_el else ""
+                    
+                    ts_el = el.select_one('time')
+                    ts = ts_el.get('datetime') if ts_el else "Unknown"
+                    
+                    if text or ts != "Unknown":
                         messages.append({
-                            "user": user.get_text(strip=True) if user else "Continuation",
-                            "text": content.get_text(strip=True),
-                            "timestamp": ts.get('datetime') if ts else "Unknown"
+                            "user": user,
+                            "text": text,
+                            "timestamp": ts
                         })
                 except:
                     continue
             return messages
-        except:
+        except Exception as e:
+            logger.error(f"Error extracting Discord messages: {e}")
             return []
 
     def is_history_empty(self, server, channel):
