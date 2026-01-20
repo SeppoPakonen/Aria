@@ -3,10 +3,10 @@
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 02-google-messages-integration
-- **Task**: 02-conversation-crawler
-- **Final Alignment**: Implemented tab-reusing navigation in aria.py and a conversation-iterating crawler for Google Messages that saves per-thread JSON data.
+- **Task**: 03-media-downloader
+- **Final Alignment**: Implemented media detection (images/videos) and downloading logic in GoogleMessagesScraper, saving files to the local media/ directory.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 02-google-messages-integration
-- **Task**: 03-media-downloader
+- **Task**: 04-implement-show-recent

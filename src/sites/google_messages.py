@@ -105,28 +105,108 @@ class GoogleMessagesScraper:
             msg_elements = self.navigator.driver.find_elements(By.CSS_SELECTOR, "mws-message-wrapper")
             for msg_el in msg_elements:
                 try:
-                    # Identify sender (usually by looking for classes or position)
-                    # This is a heuristic and might need adjustment based on Google's DOM
-                    text = msg_el.find_element(By.CSS_SELECTOR, ".text-msg").text.strip()
+                    # Identify sender
+                    is_outgoing = "outgoing" in msg_el.get_attribute("class")
                     
-                    # Try to find timestamp
+                    # 1. Extract Text
+                    text = ""
+                    try:
+                        text = msg_el.find_element(By.CSS_SELECTOR, ".text-msg").text.strip()
+                    except:
+                        pass
+                    
+                    # 2. Extract Media
+                    media_info = self.extract_media(msg_el)
+                    
+                    # 3. Extract Timestamp
                     try:
                         timestamp = msg_el.find_element(By.CSS_SELECTOR, ".timestamp").text.strip()
                     except:
                         timestamp = "Unknown"
-                        
-                    # Check for outgoing/incoming status
-                    is_outgoing = "outgoing" in msg_el.get_attribute("class")
                     
-                    messages.append({
+                    msg_data = {
                         "text": text,
                         "timestamp": timestamp,
                         "type": "sent" if is_outgoing else "received"
-                    })
+                    }
+                    
+                    if media_info:
+                        msg_data["media"] = media_info
+                    
+                    if text or media_info:
+                        messages.append(msg_data)
                 except:
-                    # Could be a non-text message (media, etc.)
                     pass
         except Exception as e:
             logger.error(f"Error extracting messages: {e}")
             
         return messages
+
+    def extract_media(self, msg_el):
+        """Detects and downloads media from a message element."""
+        media_list = []
+        
+        # Check for images
+        try:
+            images = msg_el.find_elements(By.CSS_SELECTOR, "img.content")
+            for img in images:
+                src = img.get_attribute("src")
+                if src:
+                    local_path = self.download_file(src, "image")
+                    if local_path:
+                        media_list.append({"type": "image", "path": local_path, "url": src})
+        except:
+            pass
+
+        # Check for videos/audio (often represented as specific tags or download links in Google Messages)
+        try:
+            # Google Messages often uses <video> or <a> with specific classes for attachments
+            videos = msg_el.find_elements(By.CSS_SELECTOR, "video")
+            for video in videos:
+                src = video.get_attribute("src")
+                if src:
+                    local_path = self.download_file(src, "video")
+                    if local_path:
+                        media_list.append({"type": "video", "path": local_path, "url": src})
+        except:
+            pass
+
+        return media_list
+
+    def download_file(self, url, category):
+        """Downloads a file to the local media directory."""
+        if not url or url.startswith("blob:"):
+            # blob URLs require different handling (e.g., executing JS to get base64)
+            # For now, we skip blobs or handle them as placeholders
+            return None
+
+        import requests
+        import hashlib
+        
+        try:
+            # Create a unique filename based on URL hash
+            ext = ".bin"
+            if "image" in category: ext = ".png"
+            elif "video" in category: ext = ".mp4"
+            
+            name_hash = hashlib.md5(url.encode()).hexdigest()
+            filename = f"{category}_{name_hash}{ext}"
+            
+            site_dir = self.sm.get_site_dir(self.site_name)
+            local_path = os.path.join(site_dir, "media", filename)
+            
+            if os.path.exists(local_path):
+                return f"media/{filename}"
+
+            # We use requests if possible, but for authenticated sessions, 
+            # we might need to use the browser's cookies.
+            # Simplified approach:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                with open(local_path, "wb") as f:
+                    f.write(response.content)
+                return f"media/{filename}"
+        except Exception as e:
+            logger.error(f"Failed to download media {url}: {e}")
+        
+        return None
