@@ -36,5 +36,6 @@ For detailed usage instructions and examples of the `aria` CLI, please refer to 
 |----|-------------------------------------------|-----------------------------------------|---------|---------------------------------------------------------------------------|
 | 01 | Implement Underlying Framework and MVP    | Establish core CLI functionality and essential features. | Planned | [Overview](./01-implement-underlying-framework-and-mvp/overview.md)       |
 | 02 | Implement Intermediate Level Features     | Enhance existing features and add new capabilities.      | Planned | [Overview](./02-implement-intermediate-level-features/overview.md)        |
-| 03 | Implement Advanced Features               | Introduce sophisticated workflows and system resilience. | Planned | [Overview](./03-implement-advanced-features/overview.md)                  |
-| 04 | Enterprise Readiness and Robustness       | Security, resilience, and DevOps integration.            | Planned | [Overview](./04-enterprise-readiness-and-robustness/overview.md)          |
+| 03 | [Implement Advanced Features](./03-implement-advanced-features/overview.md) | Sophisticated workflows, resilience, and extensibility. | Completed |
+| 04 | [Enterprise Readiness](./04-enterprise-readiness-and-robustness/overview.md) | Security, CI/CD, and robust element handling. | Completed |
+| 05 | [Site-Specific Data & Scraping](./05-site-specific-data-and-scraping/overview.md) | Site-tailored scraping and local JSON data storage. | Planned |
