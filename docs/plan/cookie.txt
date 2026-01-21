@@ -2,11 +2,11 @@
 
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
-- **Phase**: 03-whatsapp-and-discord-integration
-- **Task**: 03-discord-persistent-ids
-- **Final Alignment**: Finalized and verified Discord scraping with hierarchical server/channel support and persistent IDs. Implemented scaffold for Threads.net.
+- **Phase**: 04-threads-calendar-and-youtube-integration
+- **Task**: 01-threads-navigation-and-scraping
+- **Final Alignment**: Implemented and verified Threads.net scraper with structure-based post extraction. Handled non-persistent undetected_geckodriver sessions and localized navigation labels.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 04-threads-calendar-and-youtube-integration
-- **Task**: 01-threads-navigation-and-scraping
+- **Task**: 02-google-calendar-navigation-and-scraping

@@ -60,52 +60,65 @@ class ThreadsScraper:
         return True
 
     def scrape_feed(self):
-        """Extracts posts from the current feed using a broader selector strategy."""
+        """Extracts posts from the current feed using a robust anchor-first strategy."""
         from bs4 import BeautifulSoup
         try:
-            # Get main scroller area
+            # Capture the entire scroller content
             main_html = self.navigator.driver.execute_script("""
-                const scroller = document.querySelector('div[aria-label*="teksti"]') || 
-                                 document.querySelector('div[aria-label*="text"]') ||
-                                 document.querySelector('div[role="main"]') ||
-                                 document.body;
-                return scroller.innerHTML;
+                const main = document.querySelector('div[role="main"]') || 
+                             document.querySelector('div[aria-label*="teksti"]') ||
+                             document.body;
+                return main.innerHTML;
             """)
             soup = BeautifulSoup(main_html, 'html.parser')
             
             posts = []
             
-            # Find all elements that look like a post by searching for profile links
-            # We look for links starting with /@ and then find their common container
+            # Find all profile links
             author_links = soup.select('a[href^="/@"]:not([href*="/post/"])')
             
             for link in author_links:
-                user = link.get_text(strip=True)
-                if not user or user == "Etusivu": continue
-                
                 try:
-                    # Find a container that likely holds the whole post
-                    # We walk up to a common div sibling area
-                    container = link.find_parent('div', class_=True)
-                    if not container: continue
+                    # 1. Extract Username
+                    # If link text is empty, try to find an image alt or a nested span
+                    user = link.get_text(strip=True)
+                    if not user:
+                        img = link.select_one('img')
+                        if img and img.has_attr('alt'):
+                            # Alt usually: "Käyttäjän username profiilikuva"
+                            match = re.search(r"Käyttäjän\s+(\S+)\s+", img['alt'])
+                            if match:
+                                user = match.group(1)
                     
-                    # Look for the main content block - often a sibling or in a parent div
-                    # We'll search the grandparent for the main text
-                    root = container.parent.parent
+                    if not user or user == "Etusivu": continue
                     
-                    # 1. Extract Text
+                    # 2. Find the post container
+                    # We walk up to a common wrapper like x1a2a7pz
+                    container = None
+                    curr = link
+                    for _ in range(10):
+                        if curr.name == 'div' and curr.has_attr('class') and 'x1a2a7pz' in str(curr.get('class')):
+                            container = curr
+                            break
+                        if not curr.parent: break
+                        curr = curr.parent
+                    
+                    if not container:
+                        # Fallback to grandparent if x1a2a7pz not found
+                        container = link.parent.parent.parent
+                    
+                    # 3. Extract Text
                     text = ""
-                    text_els = root.select('div[dir="auto"]')
-                    for te in text_els:
-                        t = te.get_text(strip=True)
-                        # The post body is usually the longest text that isn't the username
-                        if t and t != user and not t.endswith('sitten') and len(t) > 5:
+                    text_els = container.select('div[dir="auto"], span[dir="auto"]')
+                    for tel in text_els:
+                        t = tel.get_text(strip=True)
+                        if t and t != user and not t.endswith('sitten') and len(t) > 10:
                             text = t
                             break
                     
-                    # 2. Extract Timestamp
+                    # 4. Extract Timestamp
                     ts = "Unknown"
-                    ts_el = root.select_one('time')
+                    ts_el = container.select_one('time')
                     if ts_el:
                         ts = ts_el.get_text(strip=True)
                     
@@ -118,7 +131,7 @@ class ThreadsScraper:
                 except:
                     continue
             
-            # Deduplicate by user and text
+            # Deduplicate
             seen = set()
             unique_posts = []
             for p in posts:
