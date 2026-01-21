@@ -403,7 +403,8 @@ def _run_cli():
     parser_site_list = site_subparsers.add_parser('list', help='List all sites with local data.')
     
     parser_site_refresh = site_subparsers.add_parser('refresh', help='Refresh data for a specific site.')
-    parser_site_refresh.add_argument('site_name', type=str, help='The name of the site (e.g., google-messages).')
+    parser_site_refresh.add_argument('site_name', type=str, help='The name of the site (e.g., google-messages) or "all".')
+    parser_site_refresh.add_argument('--deep', action='store_true', help='Perform a deep crawl (follows all thread links, etc). Default is False.')
     
     parser_site_synthesize = site_subparsers.add_parser('synthesize', help='Synthesize data across all sites to answer a prompt or suggest goals.')
     parser_site_synthesize.add_argument('prompt', type=str, nargs='?', help='The question or goal to achieve (e.g. "Suggest someone for coffee tomorrow").')
@@ -1009,7 +1010,8 @@ def _run_cli():
                 # Dispatch to scraper
                 if sn in scrapers_map:
                     scraper = scrapers_map[sn](navigator, sm)
-                    if scraper.refresh():
+                    # Pass the deep flag to the refresh method
+                    if scraper.refresh(deep=getattr(args, 'deep', False)):
                         print(f"Successfully refreshed data for {sn}.")
                     else:
                         print(f"Failed to refresh data for {sn}.")

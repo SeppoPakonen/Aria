@@ -10,7 +10,7 @@ from navigator import AriaNavigator
 logger = logging.getLogger("aria.sites.discord")
 
 class DiscordScraper:
-    """Scraper for Discord Web using language-agnostic data attributes."""
+    """Scraper for Discord Web using structure-based discovery."""
     URL = "https://discord.com/app"
 
     def __init__(self, navigator: AriaNavigator, site_manager):
@@ -28,29 +28,32 @@ class DiscordScraper:
         
         try:
             print("Waiting for Discord to fully load...")
-            # Wait for the app container
-            self.navigator.wait_for_element("div[id='app-mount']", by=By.CSS_SELECTOR, timeout=45)
-            # Wait specifically for the guild scroller
-            self.navigator.wait_for_element("ul[data-list-id='guildsnav']", by=By.CSS_SELECTOR, timeout=20)
-            time.sleep(3)
+            # Wait for any of these indicators: app mount, guilds rail, or home button
+            self.navigator.wait_for_element("div[id='app-mount'], ul[data-list-id='guildsnav'], [aria-label*='Home']", by=By.CSS_SELECTOR, timeout=45)
+            time.sleep(5)
             print("Discord loaded successfully.")
             return True
         except Exception as e:
             logger.error(f"Failed to load Discord: {e}")
+            try:
+                print(f"  Title: {self.navigator.driver.title}")
+                print(f"  URL: {self.navigator.driver.current_url}")
+            except:
+                pass
             print("Error: Discord did not load. Please ensure you are logged in.")
             return False
 
-    def refresh(self):
-        """Orchestrates the Discord data refresh."""
+    def refresh(self, deep=False):
+        """Orchestrates the Discord data refresh with unread-only logic by default."""
         if not self.navigate():
             return False
         
-        print("Starting data refresh for Discord...")
+        print(f"Starting {'deep' if deep else 'shallow'} data refresh for Discord...")
         
         # 1. Discover Servers
         servers = self.discover_servers()
         if not any(s['is_home'] for s in servers):
-            servers.insert(0, {"id": "guildsnav___home", "name": "Direct Messages", "is_home": True})
+            servers.insert(0, {"id": "guildsnav___home", "name": "Direct Messages", "is_home": True, "has_unread": False})
             
         print(f"Found {len(servers)} server containers.")
         
@@ -59,34 +62,70 @@ class DiscordScraper:
         
         # 3. Crawl each server
         for server in servers:
-            self.crawl_server(server)
+            self.crawl_server(server, deep=deep)
             
         self.sm.save_data(self.site_name, "metadata.json", {
             "last_refresh": time.ctime(),
-            "server_count": len(servers)
+            "server_count": len(servers),
+            "mode": "deep" if deep else "shallow"
         })
         return True
 
     def discover_servers(self):
         """Finds all available servers in the left sidebar guild rail."""
+        # Give extra time for guild icons to render
+        time.sleep(5)
         script = """
-        const rail = document.querySelector('ul[data-list-id="guildsnav"]');
-        if (!rail) return [];
+        // Find all links that look like channels/servers
+        const links = Array.from(document.querySelectorAll('a[href^="/channels/"]'));
+        const serversMap = new Map();
         
-        return Array.from(rail.querySelectorAll('div[data-list-item-id^="guildsnav___"]'))
-            .map(el => {
-                const id = el.getAttribute('data-list-item-id');
-                const isHome = id.includes('home');
-                const name = isHome ? "Direct Messages" : (el.getAttribute('aria-label') || id.split('___')[1]);
-                return { id, name, is_home: isHome };
-            });
+        links.forEach(a => {
+            const href = a.getAttribute('href');
+            const isHome = href === "/channels/@me";
+            const parts = href.split('/');
+            const serverId = isHome ? "guildsnav___home" : parts[2];
+            
+            if (!serverId) return;
+            if (serversMap.has(serverId)) return;
+            
+            // In Discord sidebar, guilds usually have a blob-mask or similar
+            // and the <a> tag is inside a div with data-list-item-id
+            const container = a.closest('[data-list-item-id^="guildsnav___"]');
+            if (container || isHome) {
+                // Check for unread marker in the parent list item
+                const parentLi = a.closest('li');
+                const hasUnread = parentLi && (
+                    !!parentLi.querySelector('[class*="unread"]') || 
+                    !!parentLi.querySelector('[class*="item-"]') ||
+                    !!parentLi.querySelector('[class*="badge"]')
+                );
+                
+                serversMap.set(serverId, {
+                    id: container ? container.getAttribute('data-list-item-id') : serverId,
+                    realId: serverId,
+                    name: a.getAttribute('aria-label') || (isHome ? "Direct Messages" : serverId),
+                    is_home: isHome,
+                    has_unread: !!hasUnread
+                });
+            }
+        });
+        
+        return Array.from(serversMap.values());
         """
         return self.navigator.driver.execute_script(script)
 
-    def crawl_server(self, server):
+    def crawl_server(self, server, deep=False):
         """Clicks a server and crawls its channels."""
-        print(f"Switching to server: {server['name']}")
+        print(f"Switching to server: {server['name']} (Unread: {server.get('has_unread')})")
         
+        # Performance: For regular sync, we primarily care about unread marks.
+        # However, we'll check Home/DMs regardless as they are high-priority.
+        
+        if not deep and not server.get('has_unread') and not server.get('is_home'):
+            print(f"  Skipping server {server['name']} (no unread messages)")
+            return
+
         if server.get('is_home'):
             if "/channels/@me" not in self.navigator.driver.current_url:
                 self.navigator.navigate("https://discord.com/channels/@me")
@@ -119,34 +158,53 @@ class DiscordScraper:
         for channel in channels:
             if channel['type'] in ['text', 'dm']:
                 # For heavy Discord scraping, we only refresh if unread or empty
-                if channel['has_unread'] or self.is_history_empty(server, channel):
+                is_empty = self.is_history_empty(server, channel)
+                if deep or channel['has_unread'] or is_empty:
+                    reason = "deep" if deep else ("unread" if channel['has_unread'] else "cache empty")
+                    print(f"    Refreshing {channel['name']} ({reason})")
                     self.scrape_channel(server, channel)
+                else:
+                    # Skip already synced channels
+                    pass
 
     def discover_channels(self, is_home=False):
-        """Finds all text channels or DMs using data attributes."""
+        """Finds all text channels or DMs and detects unread markers."""
         if is_home:
             script = """
             return Array.from(document.querySelectorAll('a[data-list-item-id^="private-channels-uid_"]'))
                 .map(a => {
                     const id = a.getAttribute('data-list-item-id');
                     const label = a.getAttribute('aria-label') || "Unknown DM";
-                    return { id, name: label, type: 'dm', has_unread: !!a.querySelector('[class*="unread"]') };
+                    const hasUnread = !!a.querySelector('[class*="unread"]') || 
+                                     !!a.querySelector('[class*="numberBadge"]');
+                    return { id, name: label, type: 'dm', has_unread: hasUnread };
                 });
             """
         else:
             script = """
-            return Array.from(document.querySelectorAll('a[data-list-item-id^="channels_"]'))
-                .map(a => {
-                    const id = a.getAttribute('data-list-item-id');
-                    const label = a.getAttribute('aria-label') || "";
-                    const isText = id.includes('channel') || label.includes('#');
-                    return {
-                        id: id,
-                        name: label,
-                        type: isText ? 'text' : 'other',
-                        has_unread: !!a.closest('li').querySelector('[class*="unread"]')
-                    };
-                }).filter(c => c !== null);
+            // Find all links that look like channels
+            const links = Array.from(document.querySelectorAll('a[href^="/channels/"]'))
+                .filter(a => !a.getAttribute('href').includes('@me'));
+            
+            return links.map(a => {
+                const id = a.getAttribute('data-list-item-id') || a.id;
+                const label = a.getAttribute('aria-label') || a.innerText || "";
+                
+                // Unread marker is in the parent LI
+                const li = a.closest('li');
+                const hasUnread = li && (
+                    !!li.querySelector('[class*="unread"]') || 
+                    !!li.querySelector('[class*="item"]') ||
+                    !!li.querySelector('[class*="badge"]')
+                );
+                
+                return {
+                    id: id,
+                    name: label,
+                    type: 'text',
+                    has_unread: !!hasUnread
+                };
+            }).filter(c => c.id && c.name);
             """
         return self.navigator.driver.execute_script(script)
 
@@ -156,7 +214,7 @@ class DiscordScraper:
         
         click_script = """
         const id = arguments[0];
-        const el = document.querySelector(`a[data-list-item-id="${id}"]`);
+        const el = document.querySelector(`a[data-list-item-id="${id}"]`) || document.getElementById(id);
         if (el) {
             const events = ['mousedown', 'mouseup', 'click'];
             events.forEach(type => {
@@ -170,9 +228,8 @@ class DiscordScraper:
         self.navigator.driver.execute_script(click_script, channel['id'])
         time.sleep(3) 
 
-        # Handle Age Restriction or other overlays
+        # Handle Overlays
         handle_overlay_script = """
-        // Find buttons that look like "Continue" or "Jatka"
         const buttons = Array.from(document.querySelectorAll('button'));
         const continueBtn = buttons.find(b => 
             b.innerText.toLowerCase().includes('jatka') || 
@@ -185,7 +242,7 @@ class DiscordScraper:
         return false;
         """
         if self.navigator.driver.execute_script(handle_overlay_script):
-            print("      Bypassed age restriction overlay.")
+            print("      Bypassed overlay.")
             time.sleep(3)
         
         messages = self.extract_messages()

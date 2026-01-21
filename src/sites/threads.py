@@ -43,29 +43,34 @@ class ThreadsScraper:
             print("Error: Threads did not load. Please ensure you are logged in.")
             return False
 
-    def refresh(self):
-        """Orchestrates the Threads data refresh, including personal profile and threads."""
+    def refresh(self, deep=False):
+        """Orchestrates the Threads data refresh. Default is shallow (feed only)."""
         if not self.navigate():
             return False
         
-        print("Starting data refresh for Threads...")
+        print(f"Starting {'deep' if deep else 'shallow'} data refresh for Threads...")
         
-        # 1. Discover Profile URL
-        profile_url = self.discover_profile_url()
-        if not profile_url:
-            print("  Warning: Could not discover personal profile URL.")
+        profile_url = None
+        if deep:
+            # 1. Discover Profile URL and crawl everything
+            profile_url = self.discover_profile_url()
+            if not profile_url:
+                print("  Warning: Could not discover personal profile URL.")
+            else:
+                print(f"  Discovered profile: {profile_url}")
+                self.scrape_personal_content(profile_url)
         else:
-            print(f"  Discovered profile: {profile_url}")
-            self.scrape_personal_content(profile_url)
+            print("  Skipping personal profile crawl (shallow mode).")
 
-        # 2. General Feed (existing logic)
+        # 2. General Feed
         posts = self.scrape_feed()
         print(f"Found {len(posts)} unique posts in general feed.")
         self.sm.save_data(self.site_name, "feed.json", posts)
         
         self.sm.save_data(self.site_name, "metadata.json", {
             "last_refresh": time.ctime(),
-            "profile_url": profile_url
+            "profile_url": profile_url or self.discover_profile_url(),
+            "mode": "deep" if deep else "shallow"
         })
         return True
 

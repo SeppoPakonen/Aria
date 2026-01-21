@@ -3,10 +3,10 @@
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 05-sync-and-maintenance
-- **Task**: 01-multi-site-orchestration-and-scheduling
-- **Final Alignment**: Implemented the `site refresh all` command, allowing sequential synchronization of data from all supported platforms (Google Messages, WhatsApp, Discord, Threads, Calendar, YouTube Studio). Handled non-persistent browser sessions and ensured each site is refreshed in its own fresh instance.
+- **Task**: 02-incremental-sync-logic
+- **Final Alignment**: Implemented "shallow-by-default" refresh logic for Discord and Threads. Added a `--deep` flag to the `site refresh` command. Shallow Discord refresh only captures unread channels, and shallow Threads refresh only captures the general feed. This significantly improves performance and reduces scraping footprint.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 05-sync-and-maintenance
-- **Task**: 02-incremental-sync-logic
+- **Task**: 03-cleanup-and-export-helpers
