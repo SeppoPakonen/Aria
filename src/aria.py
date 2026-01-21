@@ -16,6 +16,7 @@ from sites.whatsapp import WhatsAppScraper
 from sites.discord import DiscordScraper
 from sites.threads import ThreadsScraper
 from sites.calendar import CalendarScraper
+from sites.youtube_studio import YouTubeStudioScraper
 from exceptions import AriaError
 
 logger = get_logger("aria")
@@ -953,8 +954,59 @@ def _run_cli():
                 print("No sites with local data found.")
         elif args.site_command == 'refresh':
             site_name = args.site_name
-            target_url = None
-            # ... (rest of the refresh logic)
+            # Define target URLs for sites
+            site_urls = {
+                "google-messages": "https://messages.google.com/web/conversations",
+                "whatsapp": "https://web.whatsapp.com/",
+                "discord": "https://discord.com/app",
+                "calendar": "https://calendar.google.com/calendar/u/0/r",
+                "threads": "https://www.threads.net/",
+                "youtube-studio": "https://studio.youtube.com/"
+            }
+            
+            target_url = site_urls.get(site_name)
+            if not target_url:
+                print(f"Refresh logic for site '{site_name}' is not yet implemented.")
+                return
+
+            browser_name = getattr(args, 'browser', 'firefox')
+            
+            # Try to find existing tab first
+            found = False
+            if navigator.connect_to_session(browser_name=browser_name):
+                if navigator.find_tab_by_url(target_url):
+                    print(f"Found existing tab for {site_name}. Reusing it.")
+                    found = True
+            
+            if not found:
+                headless = getattr(args, 'headless', False)
+                profile = getattr(args, 'profile', None)
+                if not navigator.start_session(browser_name=browser_name, headless=headless, profile=profile):
+                    print(f"Failed to start session for {site_name}.")
+                    return
+                # Check again in the new session just in case
+                if not navigator.find_tab_by_url(target_url):
+                    print(f"Navigating to {target_url}...")
+                    navigator.navigate(target_url)
+
+            # Dispatch to scraper
+            scrapers = {
+                "google-messages": GoogleMessagesScraper,
+                "whatsapp": WhatsAppScraper,
+                "discord": DiscordScraper,
+                "threads": ThreadsScraper,
+                "calendar": CalendarScraper,
+                "youtube-studio": YouTubeStudioScraper
+            }
+            
+            if site_name in scrapers:
+                scraper = scrapers[site_name](navigator, sm)
+                if scraper.refresh():
+                    print(f"Successfully refreshed data for {site_name}.")
+                else:
+                    print(f"Failed to refresh data for {site_name}.")
+            else:
+                print(f"Scraper for '{site_name}' is not yet fully implemented.")
         elif args.site_command == 'synthesize':
             site_synthesize(args.prompt, sm)
         elif args.site_command == 'show':
@@ -981,6 +1033,15 @@ def _run_cli():
                             print(f"{i+1}: {ev['summary']}")
                     else:
                         print(f"No events found for {site_name}. Run 'site refresh calendar' first.")
+                    return
+                elif site_name == "youtube-studio":
+                    videos = sm.load_data(site_name, "videos.json")
+                    if videos:
+                        print(f"Videos for {site_name}:")
+                        for i, v in enumerate(videos):
+                            print(f"{i+1}: {v['title']} ({v['views']} views)")
+                    else:
+                        print(f"No videos found for {site_name}. Run 'site refresh youtube-studio' first.")
                     return
 
                 if mappings:
