@@ -34,7 +34,7 @@ class WhatsAppScraper:
             print("Error: WhatsApp did not load. Please ensure QR code is scanned.")
             return False
 
-    def refresh(self):
+    def refresh(self, deep=False):
         """Orchestrates the WhatsApp data refresh."""
         # Navigation is handled by aria.py but we verify
         if "web.whatsapp.com" not in self.navigator.driver.current_url:

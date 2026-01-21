@@ -58,7 +58,7 @@ class CalendarScraper:
                 pass
             return False
 
-    def refresh(self):
+    def refresh(self, deep=False):
         """Orchestrates the Google Calendar data refresh."""
         if not self.navigate():
             return False

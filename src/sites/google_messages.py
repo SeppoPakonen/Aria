@@ -33,26 +33,12 @@ class GoogleMessagesScraper:
             print("Error: Google Messages did not load within 30 seconds. Please check pairing.")
             return False
 
-    def refresh(self):
-        """Orchestrates the full data refresh/scraping process."""
-        # Note: Navigation is now handled by aria.py before calling refresh
-        # but we check if we are on the right page.
-        if self.URL not in self.navigator.driver.current_url:
-            if not self.navigate():
-                return False
+    def refresh(self, deep=False):
+        """Orchestrates the Google Messages data refresh."""
+        if not self.navigate():
+            return False
         
         print("Starting data refresh for Google Messages...")
-        conversations = self.scrape_all_conversations()
-        
-        # Update persistent registry
-        self.sm.update_registry(self.site_name, [c["name"] for c in conversations])
-        
-        # Save a metadata summary
-        self.sm.save_data(self.site_name, "metadata.json", {
-            "last_refresh": time.ctime(),
-            "conversation_count": len(conversations)
-        })
-        return True
 
     def scrape_all_conversations(self):
         """Iterates through all conversations and scrapes their content."""

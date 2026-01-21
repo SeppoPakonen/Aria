@@ -39,7 +39,7 @@ class YouTubeStudioScraper:
             print("Error: YouTube Studio did not load. Please ensure you are logged in.")
             return False
 
-    def refresh(self):
+    def refresh(self, deep=False):
         """Orchestrates the YouTube Studio data refresh."""
         if not self.navigate():
             return False
