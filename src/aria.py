@@ -15,6 +15,7 @@ from sites.google_messages import GoogleMessagesScraper
 from sites.whatsapp import WhatsAppScraper
 from sites.discord import DiscordScraper
 from sites.threads import ThreadsScraper
+from sites.calendar import CalendarScraper
 from exceptions import AriaError
 
 logger = get_logger("aria")
@@ -938,7 +939,8 @@ def _run_cli():
                 "google-messages": GoogleMessagesScraper,
                 "whatsapp": WhatsAppScraper,
                 "discord": DiscordScraper,
-                "threads": ThreadsScraper
+                "threads": ThreadsScraper,
+                "calendar": CalendarScraper
             }
             
             if site_name in scrapers:
@@ -966,6 +968,16 @@ def _run_cli():
             
             # 1. Action: list
             if args.action == 'list':
+                if site_name == "calendar":
+                    events = sm.load_data(site_name, "events.json")
+                    if events:
+                        print(f"Calendar events for {site_name}:")
+                        for i, ev in enumerate(events):
+                            print(f"{i+1}: {ev['summary']}")
+                    else:
+                        print(f"No events found for {site_name}. Run 'site refresh calendar' first.")
+                    return
+
                 if mappings:
                     print(f"Items for {site_name} (Persistent IDs):")
                     for cid in sorted(mappings.keys(), key=int):

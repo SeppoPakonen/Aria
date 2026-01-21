@@ -3,10 +3,10 @@
 ### Last Completed Task
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 04-threads-calendar-and-youtube-integration
-- **Task**: 01-threads-navigation-and-scraping
-- **Final Alignment**: Enhanced Threads.net scraper to include personal profile crawling, capturing all own posts, comments, and interactions with full context (parent posts and other replies). Implemented scrolling for long threads and unique display names in registry.
+- **Task**: 02-google-calendar-navigation-and-scraping
+- **Final Alignment**: Implemented and verified Google Calendar scraper. Successfully bypassed marketing redirects by using direct app URL and implemented robust event extraction using aria-labels and text heuristics for Finnish locale.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 04-threads-calendar-and-youtube-integration
-- **Task**: 02-google-calendar-navigation-and-scraping
+- **Task**: 03-youtube-studio-navigation-and-scraping
