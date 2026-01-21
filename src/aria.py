@@ -964,33 +964,7 @@ def _run_cli():
                 "youtube-studio": "https://studio.youtube.com/"
             }
             
-            target_url = site_urls.get(site_name)
-            if not target_url:
-                print(f"Refresh logic for site '{site_name}' is not yet implemented.")
-                return
-
-            browser_name = getattr(args, 'browser', 'firefox')
-            
-            # Try to find existing tab first
-            found = False
-            if navigator.connect_to_session(browser_name=browser_name):
-                if navigator.find_tab_by_url(target_url):
-                    print(f"Found existing tab for {site_name}. Reusing it.")
-                    found = True
-            
-            if not found:
-                headless = getattr(args, 'headless', False)
-                profile = getattr(args, 'profile', None)
-                if not navigator.start_session(browser_name=browser_name, headless=headless, profile=profile):
-                    print(f"Failed to start session for {site_name}.")
-                    return
-                # Check again in the new session just in case
-                if not navigator.find_tab_by_url(target_url):
-                    print(f"Navigating to {target_url}...")
-                    navigator.navigate(target_url)
-
-            # Dispatch to scraper
-            scrapers = {
+            scrapers_map = {
                 "google-messages": GoogleMessagesScraper,
                 "whatsapp": WhatsAppScraper,
                 "discord": DiscordScraper,
@@ -998,15 +972,49 @@ def _run_cli():
                 "calendar": CalendarScraper,
                 "youtube-studio": YouTubeStudioScraper
             }
-            
-            if site_name in scrapers:
-                scraper = scrapers[site_name](navigator, sm)
-                if scraper.refresh():
-                    print(f"Successfully refreshed data for {site_name}.")
-                else:
-                    print(f"Failed to refresh data for {site_name}.")
+
+            sites_to_refresh = []
+            if site_name == "all":
+                sites_to_refresh = list(site_urls.keys())
             else:
-                print(f"Scraper for '{site_name}' is not yet fully implemented.")
+                if site_name not in site_urls:
+                    print(f"Refresh logic for site '{site_name}' is not yet implemented.")
+                    return
+                sites_to_refresh = [site_name]
+
+            browser_name = getattr(args, 'browser', 'firefox')
+            
+            for sn in sites_to_refresh:
+                print(f"\n--- Refreshing data for {sn} ---")
+                target_url = site_urls[sn]
+                
+                # Try to find existing tab first
+                found = False
+                if navigator.connect_to_session(browser_name=browser_name):
+                    if navigator.find_tab_by_url(target_url):
+                        print(f"Found existing tab for {sn}. Reusing it.")
+                        found = True
+                
+                if not found:
+                    headless = getattr(args, 'headless', False)
+                    profile = getattr(args, 'profile', None)
+                    if not navigator.start_session(browser_name=browser_name, headless=headless, profile=profile):
+                        print(f"Failed to start session for {sn}.")
+                        continue
+                    # Check again in the new session just in case
+                    if not navigator.find_tab_by_url(target_url):
+                        print(f"Navigating to {target_url}...")
+                        navigator.navigate(target_url)
+
+                # Dispatch to scraper
+                if sn in scrapers_map:
+                    scraper = scrapers_map[sn](navigator, sm)
+                    if scraper.refresh():
+                        print(f"Successfully refreshed data for {sn}.")
+                    else:
+                        print(f"Failed to refresh data for {sn}.")
+                else:
+                    print(f"Scraper for '{sn}' is not yet fully implemented.")
         elif args.site_command == 'synthesize':
             site_synthesize(args.prompt, sm)
         elif args.site_command == 'show':
