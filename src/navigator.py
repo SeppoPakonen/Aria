@@ -9,17 +9,26 @@ from selenium.common.exceptions import WebDriverException, TimeoutException, Sta
 
 # Webdriver managers
 from webdriver_manager.chrome import ChromeDriverManager
-from webdriver_manager.firefox import GeckoDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
-# Webdriver services
+# Import undetected geckodriver for Firefox (enhanced version)
+try:
+    from undetected_geckodriver import Firefox as UndetectedFirefox
+    from selenium.webdriver.firefox.options import Options as FirefoxOptions
+    UNDETECTED_GECKODRIVER_AVAILABLE = True
+except ImportError:
+    # Fallback to regular geckodriver
+    from webdriver_manager.firefox import GeckoDriverManager
+    from selenium.webdriver.firefox.service import Service as FirefoxService
+    from selenium.webdriver.firefox.options import Options as FirefoxOptions
+    UNDETECTED_GECKODRIVER_AVAILABLE = False
+
+# Webdriver services for Chrome and Edge
 from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.edge.service import Service as EdgeService
 
-# Webdriver options
+# Webdriver options for Chrome and Edge
 from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
 
 from selenium.webdriver.remote.webdriver import WebDriver
@@ -317,23 +326,54 @@ class AriaNavigator(BaseNavigator):
                         logger.info(f"Found Chrome/Chromium binary at: {bin_path}")
                         options.binary_location = bin_path
             elif browser_name == "firefox":
-                driver_path = GeckoDriverManager().install()
-                options = FirefoxOptions()
-                if os.name == 'posix':
-                    bin_path = get_binary_path("firefox")
-                    if bin_path:
-                        logger.info(f"Found Firefox binary at: {bin_path}")
-                        options.binary_location = bin_path
-                
-                if profile:
-                    profile_path = get_firefox_profile_path(profile)
-                    if profile_path:
-                        print(f"Using Firefox profile (Direct): {profile_path}")
-                        # Use the profile directly (requires Firefox to be closed)
-                        options.add_argument("-profile")
-                        options.add_argument(profile_path)
-                    else:
-                        print(f"Warning: Could not find Firefox profile '{profile}'. Using default.")
+                if UNDETECTED_GECKODRIVER_AVAILABLE:
+                    # Use enhanced undetected geckodriver
+                    options = FirefoxOptions()
+                    if os.name == 'posix':
+                        bin_path = get_binary_path("firefox")
+                        if bin_path:
+                            logger.info(f"Found Firefox binary at: {bin_path}")
+                            options.binary_location = bin_path
+
+                    # Use default profile by default for better undetection
+                    self.driver = UndetectedFirefox(options=options, use_default_profile=True)
+
+                    # Save session info for undetected geckodriver
+                    session_data = {
+                        "session_id": self.driver.session_id,
+                        "url": "undetected_geckodriver",  # Placeholder for undetected geckodriver
+                        "browser": browser_name,
+                        "driver_type": "undetected",  # Mark this as an undetected geckodriver session
+                        "driver_pid": None  # undetected_geckodriver manages its own process
+                    }
+
+                    self._save_session(browser_name, session_data)
+                    logger.info(
+                        f"Aria session started for {browser_name} using enhanced undetected geckodriver",
+                        extra={"session_id": self.driver.session_id, "browser": browser_name}
+                    )
+
+                    print(f"Aria session started for {browser_name} using enhanced undetected geckodriver")
+                    return self.driver
+                else:
+                    # Fallback to regular geckodriver
+                    driver_path = GeckoDriverManager().install()
+                    options = FirefoxOptions()
+                    if os.name == 'posix':
+                        bin_path = get_binary_path("firefox")
+                        if bin_path:
+                            logger.info(f"Found Firefox binary at: {bin_path}")
+                            options.binary_location = bin_path
+
+                    if profile:
+                        profile_path = get_firefox_profile_path(profile)
+                        if profile_path:
+                            print(f"Using Firefox profile (Direct): {profile_path}")
+                            # Use the profile directly (requires Firefox to be closed)
+                            options.add_argument("-profile")
+                            options.add_argument(profile_path)
+                        else:
+                            print(f"Warning: Could not find Firefox profile '{profile}'. Using default.")
 
             elif browser_name == "edge":
                 driver_path = EdgeChromiumDriverManager().install()
@@ -345,16 +385,16 @@ class AriaNavigator(BaseNavigator):
             creation_flags = 0
             if os.name == 'nt':
                 creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
-            
+
             proc = subprocess.Popen([driver_path, f"--port={port}"], creationflags=creation_flags)
             time.sleep(2)
-            
+
             if headless:
                 options.add_argument("--headless")
-            
+
             remote_url = f"http://localhost:{port}"
             self.driver = webdriver.Remote(command_executor=remote_url, options=options)
-            
+
             session_data = {
                 "session_id": self.driver.session_id,
                 "url": remote_url,
@@ -396,7 +436,7 @@ class AriaNavigator(BaseNavigator):
     def connect_to_session(self, browser_name=None):
         if not browser_name:
             browser_name = self._get_current_browser()
-        
+
         if not browser_name:
             # Fallback: pick any active browser
             active = self.list_active_browsers()
@@ -408,48 +448,70 @@ class AriaNavigator(BaseNavigator):
         session_data = self._load_session_data(browser_name)
         if not session_data:
             return None
-        
-        # Optimization: Check if process is still running
-        driver_pid = session_data.get("driver_pid")
-        if not self._is_process_running(driver_pid):
-            logger.warning(
-                f"Driver process for {browser_name} (PID {driver_pid}) is no longer running.",
-                extra={"browser": browser_name, "driver_pid": driver_pid}
-            )
-            self._remove_session_file(browser_name)
-            return None
+
+        # Check if this is an undetected geckodriver session
+        is_undetected_session = session_data.get("driver_type") == "undetected"
+
+        # Optimization: Check if process is still running (skip for undetected geckodriver)
+        if not is_undetected_session:
+            driver_pid = session_data.get("driver_pid")
+            if not self._is_process_running(driver_pid):
+                logger.warning(
+                    f"Driver process for {browser_name} (PID {driver_pid}) is no longer running.",
+                    extra={"browser": browser_name, "driver_pid": driver_pid}
+                )
+                self._remove_session_file(browser_name)
+                return None
 
         try:
             if browser_name == "chrome":
                 options = ChromeOptions()
             elif browser_name == "firefox":
-                options = FirefoxOptions()
+                if UNDETECTED_GECKODRIVER_AVAILABLE and is_undetected_session:
+                    # For undetected geckodriver sessions, we can't reconnect using Remote
+                    # This is a limitation of undetected geckodriver
+                    logger.warning(
+                        f"Cannot reconnect to undetected geckodriver session for {browser_name}. "
+                        f"Session persistence not supported by undetected geckodriver."
+                    )
+                    return None
+                else:
+                    options = FirefoxOptions()
             elif browser_name == "edge":
                 options = EdgeOptions()
             else:
                 # Default to ChromeOptions if unknown, or return None
                 options = ChromeOptions()
 
-            driver = ReusableRemote(
-                command_executor=session_data["url"],
-                options=options,
-                session_id=session_data["session_id"]
-            )
-            
-            # Verify it works with a timeout
-            driver.set_page_load_timeout(5)
-            driver.set_script_timeout(5)
-            _ = driver.current_url
-            
-            self.driver = driver
-            logger.info(
-                f"Successfully reconnected to {browser_name} session.",
-                extra={"browser": browser_name, "session_id": session_data["session_id"]}
-            )
-            # Update current browser
-            with open(self.get_session_file_path(), "w") as f:
-                json.dump({"browser": browser_name}, f)
-            return self.driver
+            # Only attempt remote connection for traditional drivers
+            if not is_undetected_session:
+                driver = ReusableRemote(
+                    command_executor=session_data["url"],
+                    options=options,
+                    session_id=session_data["session_id"]
+                )
+
+                # Verify it works with a timeout
+                driver.set_page_load_timeout(5)
+                driver.set_script_timeout(5)
+                _ = driver.current_url
+
+                self.driver = driver
+                logger.info(
+                    f"Successfully reconnected to {browser_name} session.",
+                    extra={"browser": browser_name, "session_id": session_data["session_id"]}
+                )
+                # Update current browser
+                with open(self.get_session_file_path(), "w") as f:
+                    json.dump({"browser": browser_name}, f)
+                return self.driver
+            else:
+                # For undetected geckodriver, we can't reconnect to existing sessions
+                logger.warning(
+                    f"Cannot reconnect to undetected geckodriver session for {browser_name}. "
+                    f"Session persistence not supported by undetected geckodriver."
+                )
+                return None
         except Exception as e:
             logger.error(f"Failed to connect to {browser_name} session: {e}")
             # If we failed to connect but the process is still "running", it might be a zombie
@@ -531,23 +593,32 @@ class AriaNavigator(BaseNavigator):
         
         if session_data:
             driver_pid = session_data.get("driver_pid")
+            is_undetected_session = session_data.get("driver_type") == "undetected"
+
             try:
                 # Try to quit driver gracefully
-                if browser_name == "chrome":
-                    options = ChromeOptions()
-                elif browser_name == "firefox":
-                    options = FirefoxOptions()
-                elif browser_name == "edge":
-                    options = EdgeOptions()
+                if not is_undetected_session:
+                    # For regular drivers, use the remote connection to quit
+                    if browser_name == "chrome":
+                        options = ChromeOptions()
+                    elif browser_name == "firefox":
+                        options = FirefoxOptions()
+                    elif browser_name == "edge":
+                        options = EdgeOptions()
+                    else:
+                        options = ChromeOptions()
+
+                    driver = ReusableRemote(
+                        command_executor=session_data["url"],
+                        options=options,
+                        session_id=session_data["session_id"]
+                    )
+                    driver.quit()
                 else:
-                    options = ChromeOptions()
-                
-                driver = ReusableRemote(
-                    command_executor=session_data["url"],
-                    options=options,
-                    session_id=session_data["session_id"]
-                )
-                driver.quit()
+                    # For undetected geckodriver, we can't use the remote connection
+                    # We need to handle this differently - for now, we just remove the session file
+                    # The actual browser instance would need to be tracked differently
+                    logger.info(f"Closing undetected geckodriver session for {browser_name}.")
             except:
                 pass
 
