@@ -255,6 +255,7 @@ def _run_cli():
     parser_open.add_argument('--headless', action='store_true', help='Run the browser in headless mode.')
     parser_open.add_argument('--browser', type=str, default='firefox', choices=['chrome', 'firefox', 'edge'], help='The browser to use.')
     parser_open.add_argument('--profile', type=str, help='The name or path of the browser profile to use (Firefox only).')
+    parser_open.add_argument('--silence-audio', action='store_true', help='Silence audio in Firefox browser (for undetected geckodriver)')
     parser_open.add_argument('--scope', type=str, default='web', choices=['web', 'bookmarks', 'local'], help='The scope of the resource to open.')
 
     # Define the 'close' command
@@ -473,7 +474,7 @@ def _run_cli():
             url_to_navigate = None
 
         if args.scope == 'web':
-            if navigator.start_session(browser_name=browser_to_open, headless=args.headless, profile=args.profile):
+            if navigator.start_session(browser_name=browser_to_open, headless=args.headless, profile=args.profile, silence_audio=args.silence_audio):
                 if url_to_navigate:
                     safe_navigate(url_to_navigate, navigator, safety_manager, force=args.force)
         else:
@@ -525,7 +526,7 @@ def _run_cli():
                     temp_path = f.name
                 
                 file_url = f"file://{os.path.abspath(temp_path)}"
-                if navigator.start_session(browser_name=args.browser, headless=args.headless):
+                if navigator.start_session(browser_name=args.browser, headless=args.headless, silence_audio=getattr(args, 'silence_audio', False)):
                     navigator.new_tab(file_url)
                     print(f"Opened local results page: {file_url}")
                 return
@@ -924,7 +925,7 @@ def _run_cli():
             if not found:
                 headless = getattr(args, 'headless', False)
                 profile = getattr(args, 'profile', None)
-                if not navigator.start_session(browser_name=browser_name, headless=headless, profile=profile):
+                if not navigator.start_session(browser_name=browser_name, headless=headless, profile=profile, silence_audio=getattr(args, 'silence_audio', False) if 'args' in locals() else False):
                     print(f"Failed to start session for {site_name}.")
                     return
                 # Check again in the new session just in case

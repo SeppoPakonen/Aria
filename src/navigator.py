@@ -227,10 +227,10 @@ class AriaNavigator(BaseNavigator):
         return None
 
     @time_it(logger)
-    def start_session(self, browser_name="chrome", headless=False, force=False, profile=None):
+    def start_session(self, browser_name="chrome", headless=False, force=False, profile=None, silence_audio=False):
         logger.info(
             f"Starting browser session: {browser_name}",
-            extra={"browser": browser_name, "headless": headless, "force": force, "profile": profile}
+            extra={"browser": browser_name, "headless": headless, "force": force, "profile": profile, "silence_audio": silence_audio}
         )
         session_file = self.get_session_file_path(browser_name)
         
@@ -336,7 +336,7 @@ class AriaNavigator(BaseNavigator):
                             options.binary_location = bin_path
 
                     # Use default profile by default for better undetection
-                    self.driver = UndetectedFirefox(options=options, use_default_profile=True)
+                    self.driver = UndetectedFirefox(options=options, use_default_profile=True, silence_audio=silence_audio)
 
                     # Save session info for undetected geckodriver
                     session_data = {
