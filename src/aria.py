@@ -351,9 +351,9 @@ def _run_cli():
     parser_site_refresh.add_argument('site_name', type=str, help='The name of the site (e.g., google-messages).')
     
     parser_site_show = site_subparsers.add_parser('show', help='Show local data for a site.')
-    parser_site_show.add_argument('site_name', type=str, help='The name of the site.')
-    parser_site_show.add_argument('action', type=str, default='recent', nargs='?', help='Action to perform (recent, list, <id> show, <id> people).')
-    parser_site_show.add_argument('sub_action', type=str, nargs='?', help='Secondary action (e.g., "show" or "people" when an ID is provided).')
+    parser_site_show.add_argument('site_name', choices=['google-messages', 'whatsapp', 'discord', 'calendar', 'threads', 'youtube-studio'], help='The name of the site.')
+    parser_site_show.add_argument('action', nargs='?', help='Action to perform (recent, list, feed, mine, responses, stats, or <id> for show).')
+    parser_site_show.add_argument('sub_action', nargs='?', help='Secondary action (e.g., "show" or "people" when an ID is provided).')
     parser_site_show.add_argument('extra_action', type=str, nargs='?', help='Tertiary action (used for Discord channels).')
 
     # Define the 'diag' command
@@ -991,49 +991,96 @@ def _run_cli():
 
             # 3. Action: <id> show
             elif item_name and (args.sub_action == 'show' or args.extra_action == 'show'):
-                if site_name == "discord":
-                    if not args.sub_action:
-                        print("Error: For Discord, use 'site show discord <id> <channel_name> show'")
-                        return
-                    
-                    chan_name = args.sub_action
-                    safe_server = "".join([c if c.isalnum() else "_" for c in item_name])
-                    safe_chan = "".join([c if c.isalnum() else "_" for c in chan_name])
-                    filename = f"chat_{safe_server}_{safe_chan}.json"
-                    
-                    data = sm.load_data(site_name, filename)
-                    if data and "messages" in data:
-                        print(f"Messages for {item_name} > {chan_name}:")
-                        for msg in data["messages"]:
-                            ts = f"[{msg['timestamp']}] " if msg.get('timestamp') and msg['timestamp'] != "Unknown" else ""
-                            print(f"{ts}{msg.get('user', 'User')}: {msg.get('text', '')}")
+                if site_name in ["google-messages", "whatsapp", "threads"]:
+                    if site_name == "discord":
+                        # Handled below
+                        pass
                     else:
-                        print(f"No message data found for {item_name} > {chan_name}.")
-                    return
-                
-                safe_name = "".join([c if c.isalnum() else "_" for c in item_name])
-                # Try convo_ prefix first, then thread_
-                data = sm.load_data(site_name, f"convo_{safe_name}.json") or \
-                       sm.load_data(site_name, f"thread_{safe_name}.json")
-                
-                # Special case for Threads IDs which aren't safe_names but exact IDs in the registry
-                if not data and site_name == "threads":
-                    site_dir = sm.get_site_dir(site_name)
-                    all_files = [f for f in os.listdir(site_dir) if f.startswith("thread_") and f.endswith(".json")]
-                    for f in all_files:
-                        d = sm.load_data(site_name, f)
-                        if d and d.get("display_name") == item_name:
-                            data = d
-                            break
+                        safe_name = "".join([c if c.isalnum() else "_" for c in item_name])
+                        # Try convo_ prefix first, then thread_
+                        data = sm.load_data(site_name, f"convo_{safe_name}.json") or \
+                               sm.load_data(site_name, f"thread_{safe_name}.json")
+                        
+                        # Special case for Threads IDs which aren't safe_names but exact IDs in the registry
+                        if not data and site_name == "threads":
+                            site_dir = sm.get_site_dir(site_name)
+                            all_files = [f for f in os.listdir(site_dir) if f.startswith("thread_") and f.endswith(".json")]
+                            for f in all_files:
+                                d = sm.load_data(site_name, f)
+                                if d and d.get("display_name") == item_name:
+                                    data = d
+                                    break
 
-                if data and "messages" in data:
-                    print(f"Messages for {item_name}:")
-                    for msg in data["messages"]:
-                        prefix = ">>" if msg.get("type") == "sent" else "<<"
-                        ts = f"[{msg['timestamp']}] " if msg.get('timestamp') and msg['timestamp'] != "Unknown" else ""
-                        print(f"{ts}{msg.get('user', 'User')}: {prefix} {msg.get('text', '')}")
-                else:
-                    print(f"No message data found for {item_name}.")
+                        if data and "messages" in data:
+                            print(f"Messages for {item_name}:")
+                            for msg in data["messages"]:
+                                prefix = ">>" if msg.get("type") == "sent" else "<<"
+                                ts = f"[{msg['timestamp']}] " if msg.get('timestamp') and msg['timestamp'] != "Unknown" else ""
+                                likes = f" ({msg['likes']} likes)" if 'likes' in msg and msg['likes'] > 0 else ""
+                                print(f"{ts}{msg.get('user', 'User')}: {prefix} {msg.get('text', '')}{likes}")
+                        else:
+                            print(f"No message data found for {item_name}.")
+                        return
+
+            # Detailed Browsing for Threads
+            elif site_name == "threads" and args.action in ["mine", "responses", "stats", "feed"]:
+                site_dir = sm.get_site_dir(site_name)
+                metadata = sm.load_data(site_name, "metadata.json") or {}
+                profile_url = metadata.get("profile_url", "")
+                own_user = profile_url.split('/@')[-1] if profile_url else "oulupoko"
+                
+                all_threads = [f for f in os.listdir(site_dir) if f.startswith("thread_") and f.endswith(".json")]
+                all_messages = []
+                for f in all_threads:
+                    data = sm.load_data(site_name, f)
+                    if data and "messages" in data:
+                        # Mark if thread started by someone else (for 'responses')
+                        first_user = data["messages"][0].get("user", "")
+                        for msg in data["messages"]:
+                            msg["_thread_url"] = data.get("url", "")
+                            msg["_thread_starter"] = first_user
+                            all_messages.append(msg)
+
+                if args.action == "mine":
+                    print(f"Own messages for {own_user}:")
+                    mine = [m for m in all_messages if m.get("user") == own_user]
+                    for m in mine:
+                        ts = f"[{m['timestamp']}] " if m['timestamp'] != "Unknown" else ""
+                        print(f"{ts}{m['text'][:150]}...")
+
+                elif args.action == "responses":
+                    print(f"Responses by {own_user} to other threads:")
+                    # Responses are our messages in threads started by others
+                    responses = [m for m in all_messages if m.get("user") == own_user and m.get("_thread_starter") != own_user]
+                    for m in responses:
+                        ts = f"[{m['timestamp']}] " if m['timestamp'] != "Unknown" else ""
+                        print(f"{ts}To {m['_thread_starter']}: {m['text'][:150]}...")
+
+                elif args.action == "feed":
+                    print(f"Cached General Feed for {site_name}:")
+                    feed_data = sm.load_data(site_name, "feed.json")
+                    if not feed_data:
+                        print("No feed data cached. Run refresh first.")
+                    else:
+                        for i, post in enumerate(feed_data):
+                            ts = f"[{post['timestamp']}] " if post.get('timestamp') and post['timestamp'] != "Unknown" else ""
+                            likes = f" ({post['likes']} likes)" if 'likes' in post and post['likes'] > 0 else ""
+                            print(f"{i+1}: {ts}{post['user']}: {post['text'][:150]}{likes}...")
+
+                elif args.action == "stats":
+                    print(f"Engagement Statistics for {site_name}:")
+                    liked = [m for m in all_messages if m.get("likes", 0) > 0]
+                    if not liked:
+                        print("No liked messages found in cache.")
+                    else:
+                        sorted_liked = sorted(liked, key=lambda x: x.get("likes", 0), reverse=True)
+                        print("\nTop 5 Most Liked Messages:")
+                        for m in sorted_liked[:5]:
+                            print(f"- ({m['likes']} likes) {m['user']}: {m['text'][:100]}...")
+                        
+                        print("\nLeast Liked (among those with likes):")
+                        for m in sorted_liked[-3:]:
+                            print(f"- ({m['likes']} likes) {m['user']}: {m['text'][:100]}...")
                 return
 
             # 3. Action: <id> people
@@ -1046,7 +1093,7 @@ def _run_cli():
                 # TODO: Implement deeper extraction of group participants if available in JSON
 
             # 4. Action: recent (Default)
-            elif args.action == 'recent' or (not args.action and not item_name):
+            elif (args.action in ['recent', 'feed', 'mine', 'responses', 'stats'] and not args.sub_action) or (not args.action and not item_name):
                 if site_name in ["google-messages", "whatsapp", "threads"]:
                     site_dir = sm.get_site_dir(site_name)
                     

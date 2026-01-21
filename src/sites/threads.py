@@ -243,14 +243,31 @@ class ThreadsScraper:
                     if ts_el:
                         ts = ts_el.get_text(strip=True)
                     elif is_post_link:
-                        # The link itself might have the text "3 pv"
                         ts = link.get_text(strip=True)
                     
+                    # 5. Extract Likes (Engagement)
+                    likes = 0
+                    # Look for links/spans containing "tykkäystä" or "likes"
+                    # Threads often hides this in a very specific sub-element
+                    like_els = container.select('a, span, div')
+                    for le in like_els:
+                        lt = le.get_text(strip=True).lower()
+                        # Match: "5 tykkäystä", "12 likes", "1 tykkää", etc.
+                        match = re.search(r"(\d+)\s+(tykkä|like)", lt)
+                        if match:
+                            likes = int(match.group(1))
+                            break
+                        # Handle "1 tykkää" / "1 like" without plural
+                        elif lt == "1 tykkää" or lt == "1 like":
+                            likes = 1
+                            break
+
                     if user and text:
                         posts.append({
                             "user": user,
                             "text": text,
-                            "timestamp": ts
+                            "timestamp": ts,
+                            "likes": likes
                         })
                 except:
                     continue
