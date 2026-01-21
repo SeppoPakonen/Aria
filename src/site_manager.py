@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 
@@ -88,25 +89,37 @@ class SiteManager:
         reg = self.load_data(site_name, "registry.json")
         return reg if reg else {"next_id": 1, "mappings": {}}
 
-    def update_registry(self, site_name: str, item_names: List[str]):
-        """Updates the registry with new items, maintaining persistent IDs."""
-        reg = self.get_registry(site_name)
-        mappings = reg.get("mappings", {})
-        next_id = reg.get("next_id", 1)
+    def cleanup_old_data(self, site_name: str, days: int = 30) -> int:
+        """Removes data files older than the specified number of days."""
+        site_dir = self.get_site_dir(site_name)
+        count = 0
+        now = time.time()
+        cutoff = now - (days * 86400)
         
-        # Existing names to IDs for quick lookup
-        name_to_id = {v: k for k, v in mappings.items()}
-        
-        updated = False
-        for name in sorted(item_names):
-            if name not in name_to_id:
-                mappings[str(next_id)] = name
-                next_id += 1
-                updated = True
-        
-        if updated:
-            reg["mappings"] = mappings
-            reg["next_id"] = next_id
-            self.save_data(site_name, "registry.json", reg)
-        
-        return mappings
+        for f in os.listdir(site_dir):
+            if f.endswith(".json") and f != "registry.json" and f != "metadata.json":
+                file_path = os.path.join(site_dir, f)
+                if os.path.getmtime(file_path) < cutoff:
+                    try:
+                        os.remove(file_path)
+                        count += 1
+                    except Exception as e:
+                        logger.error(f"Failed to remove {file_path}: {e}")
+        return count
+
+    def archive_site(self, site_name: str, output_path: str = None) -> str:
+        """Creates a ZIP archive of all data for a specific site."""
+        import shutil
+        site_dir = self.get_site_dir(site_name)
+        if not os.path.exists(site_dir):
+            return None
+            
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        if not output_path:
+            output_path = os.path.join(self.base_dir, f"archive_{site_name}_{timestamp}")
+            
+        if output_path.endswith(".zip"):
+            output_path = output_path[:-4]
+            
+        final_path = shutil.make_archive(output_path, 'zip', site_dir)
+        return final_path

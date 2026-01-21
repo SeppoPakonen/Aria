@@ -406,6 +406,10 @@ def _run_cli():
     parser_site_refresh.add_argument('site_name', type=str, help='The name of the site (e.g., google-messages) or "all".')
     parser_site_refresh.add_argument('--deep', action='store_true', help='Perform a deep crawl (follows all thread links, etc). Default is False.')
     
+    parser_site_cleanup = site_subparsers.add_parser('cleanup', help='Remove old data files for a site.')
+    parser_site_cleanup.add_argument('site_name', type=str, help='The name of the site.')
+    parser_site_cleanup.add_argument('--days', type=int, default=30, help='Remove files older than this many days (default: 30).')
+
     parser_site_synthesize = site_subparsers.add_parser('synthesize', help='Synthesize data across all sites to answer a prompt or suggest goals.')
     parser_site_synthesize.add_argument('prompt', type=str, nargs='?', help='The question or goal to achieve (e.g. "Suggest someone for coffee tomorrow").')
 
@@ -435,6 +439,10 @@ def _run_cli():
     parser_cred_remove.add_argument('key', type=str, help='The name of the credential to remove.')
 
     settings_subparsers.add_parser('cleanup', help='Clean up stale session files and orphaned driver processes.')
+
+    parser_settings_archive = settings_subparsers.add_parser('archive-site', help='Create a ZIP archive of all data for a specific site.')
+    parser_settings_archive.add_argument('site_name', type=str, help='The name of the site to archive.')
+    parser_settings_archive.add_argument('--path', type=str, help='Optional output path for the ZIP file.')
 
     parser_settings_export = settings_subparsers.add_parser('export-artifacts', help='Package and export execution artifacts (logs, reports).')
     parser_settings_export.add_argument('--path', type=str, help='Output path for the archive (e.g., run-artifacts.zip).')
@@ -1017,6 +1025,10 @@ def _run_cli():
                         print(f"Failed to refresh data for {sn}.")
                 else:
                     print(f"Scraper for '{sn}' is not yet fully implemented.")
+        elif args.site_command == 'cleanup':
+            sm = SiteManager()
+            count = sm.cleanup_old_data(args.site_name, days=args.days)
+            print(f"Cleaned up {count} old data file(s) for {args.site_name}.")
         elif args.site_command == 'synthesize':
             site_synthesize(args.prompt, sm)
         elif args.site_command == 'show':
@@ -1293,6 +1305,13 @@ def _run_cli():
         elif args.settings_command == 'cleanup':
             count = navigator.cleanup_orphaned_sessions()
             print(f"Cleanup complete. Removed {count} stale session(s).")
+        elif args.settings_command == 'archive-site':
+            sm = SiteManager()
+            path = sm.archive_site(args.site_name, output_path=args.path)
+            if path:
+                print(f"Site data archived to: {path}")
+            else:
+                print(f"Error: Could not archive data for site '{args.site_name}'.")
         elif args.settings_command == 'export-artifacts':
             import shutil
             import tempfile
