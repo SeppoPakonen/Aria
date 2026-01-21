@@ -4,7 +4,7 @@
 - **Track**: 05-site-specific-data-and-scraping
 - **Phase**: 04-threads-calendar-and-youtube-integration
 - **Task**: 01-threads-navigation-and-scraping
-- **Final Alignment**: Implemented and verified Threads.net scraper with structure-based post extraction. Handled non-persistent undetected_geckodriver sessions and localized navigation labels.
+- **Final Alignment**: Enhanced Threads.net scraper to include personal profile crawling, capturing all own posts, comments, and interactions with full context (parent posts and other replies). Implemented scrolling for long threads and unique display names in registry.
 
 ### Next Task to Implement
 - **Track**: 05-site-specific-data-and-scraping

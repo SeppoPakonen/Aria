@@ -1012,15 +1012,29 @@ def _run_cli():
                     return
                 
                 safe_name = "".join([c if c.isalnum() else "_" for c in item_name])
-                data = sm.load_data(site_name, f"convo_{safe_name}.json")
+                # Try convo_ prefix first, then thread_
+                data = sm.load_data(site_name, f"convo_{safe_name}.json") or \
+                       sm.load_data(site_name, f"thread_{safe_name}.json")
+                
+                # Special case for Threads IDs which aren't safe_names but exact IDs in the registry
+                if not data and site_name == "threads":
+                    site_dir = sm.get_site_dir(site_name)
+                    all_files = [f for f in os.listdir(site_dir) if f.startswith("thread_") and f.endswith(".json")]
+                    for f in all_files:
+                        d = sm.load_data(site_name, f)
+                        if d and d.get("display_name") == item_name:
+                            data = d
+                            break
+
                 if data and "messages" in data:
                     print(f"Messages for {item_name}:")
                     for msg in data["messages"]:
-                        prefix = ">>" if msg["type"] == "sent" else "<<"
-                        ts = f"[{msg['timestamp']}] " if msg['timestamp'] and msg['timestamp'] != "Unknown" else ""
-                        print(f"{ts}{prefix} {msg['text']}")
+                        prefix = ">>" if msg.get("type") == "sent" else "<<"
+                        ts = f"[{msg['timestamp']}] " if msg.get('timestamp') and msg['timestamp'] != "Unknown" else ""
+                        print(f"{ts}{msg.get('user', 'User')}: {prefix} {msg.get('text', '')}")
                 else:
                     print(f"No message data found for {item_name}.")
+                return
 
             # 3. Action: <id> people
             elif item_name and args.sub_action == 'people':

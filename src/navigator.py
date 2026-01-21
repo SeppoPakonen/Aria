@@ -12,6 +12,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 from webdriver_manager.microsoft import EdgeChromiumDriverManager
 
 # Import undetected geckodriver for Firefox (enhanced version)
+import sys
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+custom_gecko_path = os.path.join(repo_root, "undetected_geckodriver_custom")
+if os.path.exists(custom_gecko_path) and custom_gecko_path not in sys.path:
+    sys.path.insert(0, custom_gecko_path)
+
 try:
     from undetected_geckodriver import Firefox as UndetectedFirefox
     from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -23,13 +29,9 @@ except ImportError:
     from selenium.webdriver.firefox.options import Options as FirefoxOptions
     UNDETECTED_GECKODRIVER_AVAILABLE = False
 
-# Webdriver services for Chrome and Edge
+# Webdriver services
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.edge.service import Service as EdgeService
-
-# Webdriver options for Chrome and Edge
-from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.edge.options import Options as EdgeOptions
 
 from selenium.webdriver.remote.webdriver import WebDriver
 from logger import get_logger, time_it
@@ -411,6 +413,8 @@ class AriaNavigator(BaseNavigator):
             print(f"Aria session started for {browser_name}")
             return self.driver
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"Error starting {browser_name} session: {e}")
             return None
 
